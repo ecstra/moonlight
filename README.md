@@ -8,6 +8,12 @@ Moonlight transforms how you build AI applications by providing a comprehensive 
 
 ---
 
+## ToDo
+
+- [ ] Code Cleanup
+- [ ] Seperation between default and user added mcp servers so user added ones do not  get lost
+- [ ] Unit tests and full workflow/deepresearch test
+
 ## 🚀 What Makes Moonlight Special?
 
 **🏗️ Multiple Execution Modes**
@@ -197,6 +203,18 @@ if it's a good time for an outdoor meeting this afternoon.
 """)
 
 print(response.assistant_message)
+```
+
+### Registry
+
+```python
+registry = MCPRegistry()
+
+# Register a server
+reistry.register(time_config)
+
+# load a config
+registry.get_by_name("time") # or search by tags based on the sdk
 ```
 
 ### 🎼 Multi-Agent Orchestra - Market Research Team
@@ -581,6 +599,6 @@ agent_deepseek = Agent(
 
 <div align="center">
 
-`<b>`Made with 🌙 by the Moonlight Team`</b>`
+Made with 🌙 by the Moonlight Team
 
 </div>
