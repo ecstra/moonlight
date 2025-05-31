@@ -82,7 +82,7 @@ Write a 500-word blog post about the benefits of microservices architecture,
 including real-world examples and potential challenges.
 """)
 
-print(response.assistant_message)
+print(response)
 ```
 
 ### 📊 Structured Data Analysis with JSON Mode
@@ -284,12 +284,12 @@ tech_researcher = DeepResearcher(
 
 # Execute comprehensive research
 print("🔍 Starting deep research on quantum computing...")
-tech_researcher.run()
+results = tech_researcher.run()
 
 # Get the detailed research report
 print("📄 Research Report:")
 print("=" * 80)
-print(tech_researcher.output)
+print(results)
 ```
 
 ### ⚡ Workflow - Automated Trading Bot
