@@ -1,4 +1,7 @@
-# 🌙 Moonlight
+
+<p align="left">
+  <img src="https://github.com/user-attachments/assets/e3ccd296-65d6-4774-90cb-8ecda6714763" width="500" alt="MoonLight">
+</p>
 
 > **A powerful Multi-Agent AI Framework for intelligent automation and orchestration**
 
@@ -7,12 +10,6 @@
 Moonlight transforms how you build AI applications by providing a comprehensive framework that orchestrates multiple AI agents, automates complex workflows, and integrates with thousands of tools seamlessly.
 
 ---
-
-## ToDo
-
-- [ ] Code Cleanup
-- [ ] Seperation between default and user added mcp servers so user added ones do not  get lost
-- [ ] Unit tests and full workflow/deepresearch test
 
 ## 🚀 What Makes Moonlight Special?
 
@@ -34,30 +31,6 @@ Moonlight transforms how you build AI applications by providing a comprehensive 
 - Token optimization and context management
 - Multi-modal support (text + images)
 - Comprehensive error handling and logging
-
----
-
-## 🎯 Real-World Use Cases
-
-### 📊 **Business Intelligence Automation**
-
-Automatically gather market data, analyze competitors, and generate weekly reports
-
-### 🔍 **Research & Analysis**
-
-Deep dive into scientific papers, extract insights, and synthesize findings
-
-### 🤖 **Customer Support Orchestration**
-
-Route inquiries to specialized agents based on complexity and domain
-
-### 📈 **Trading & Finance**
-
-Monitor markets, analyze trends, and execute automated trading strategies
-
-### 🏥 **Healthcare Workflow**
-
-Process patient data, schedule appointments, and coordinate care teams
 
 ---
 
@@ -467,7 +440,7 @@ Advanced automation for complex business processes:
 
 ## 🔌 MCP Integration
 
-### **3,000+ Pre-configured Servers**
+### **3,000+ Pre-configured Servers** (To be done)
 
 Moonlight includes validated configurations for thousands of MCP servers across categories:
 
@@ -563,31 +536,12 @@ agent_deepseek = Agent(
 
 ---
 
-## 🚀 Advanced Features
 
-### **Context Optimization**
+## ToDo
 
-- Automatic token counting and management
-- Context window optimization for long conversations
-- Intelligent truncation strategies
-
-### **Error Handling & Resilience**
-
-- Automatic retry mechanisms
-- Graceful degradation on failures
-- Comprehensive logging and debugging
-
-### **Performance Monitoring**
-
-- Execution time tracking
-- Token usage analytics
-- Success/failure metrics
-
-### **Security & Privacy**
-
-- Secure API key management
-- Data encryption in transit
-- Audit logging capabilities
+- [ ] Code Cleanup
+- [ ] Seperation between default and user added mcp servers so user added ones do not  get lost
+- [ ] Unit tests and full workflow/deepresearch test
 
 ---
 
