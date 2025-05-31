@@ -1,0 +1,7 @@
+include README.md
+include requirements.txt
+include LICENSE
+recursive-include moonlight *.json
+recursive-include moonlight *.py
+recursive-exclude moonlight *.pyc
+recursive-exclude moonlight __pycache__
