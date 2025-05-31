@@ -194,50 +194,38 @@ registry.get_by_name("time") # or search by tags based on the sdk
 ### 🎼 Multi-Agent Orchestra - Market Research Team
 
 ```python
-from moonlight_ai import Orchestra,  MCPConfig
-
-# Create web search MCP configuration
-search_config = MCPConfig(
-    name="web_search",
-    command="uvx",
-    args=["mcp-server-brave-search", "--api-key=${BRAVE_API_KEY}"],
-    description="Web search capabilities for real-time information",
-    tags=["search", "web", "research"]
-)
+from moonlight_ai import Orchestra, Agent
 
 # Create specialized research agents
-market_researcher = Agent(
+market_researcher_agent = Agent(
     name="market_researcher", 
     instruction="""You are a market research specialist. Focus on industry trends, 
     market size, growth rates, and competitive landscape analysis.""",
     provider=provider,
     model_name="deepseek-chat",
-    mcp_servers=[search_config]
 )
 
-competitor_analyst = Agent(
+competitor_analyst_agent = Agent(
     name="competitor_analyst",
     instruction="""You are a competitive intelligence expert. Analyze competitor 
     strategies, pricing, product features, and market positioning.""", 
     provider=provider,
     model_name="deepseek-chat",
-    mcp_servers=[search_config]
 )
 
-financial_analyst = Agent(
+financial_analyst_agent = Agent(
     name="financial_analyst",
     instruction="""You are a financial analyst specializing in startup and tech company 
     valuations, funding rounds, and financial performance metrics.""",
     provider=provider,
     model_name="deepseek-chat",
-    mcp_servers=[search_config]
 )
 
 # Set up the research orchestra
 research_team = {
-    "market_researcher": market_researcher,
-    "competitor_analyst": competitor_analyst,
-    "financial_analyst": financial_analyst
+    "market_researcher_agent": market_researcher_agent,
+    "competitor_analyst_agent": competitor_analyst_agent,
+    "financial_analyst_agent": financial_analyst_agent
 }
 
 orchestrator = Orchestra(
