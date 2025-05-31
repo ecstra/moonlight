@@ -78,7 +78,7 @@ uv pip install moonlight-ai
 
 ```python
 import os
-from core.agent_architecture import Agent, Hive, MoonlightProvider
+from moonlight_ai import Agent, Hive, MoonlightProvider
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -163,7 +163,7 @@ print(analysis)
 ### 🔌 MCP Integration - Time & Weather Assistant
 
 ```python
-from core.mcp import MCPConfig, MCPRegistry
+from moonlight_ai import MCPConfig, MCPRegistry
 
 # Create MCP configurations for time and weather
 time_config = MCPConfig(
@@ -216,8 +216,7 @@ registry.get_by_name("time") # or search by tags based on the sdk
 ### 🎼 Multi-Agent Orchestra - Market Research Team
 
 ```python
-from core.modes.orchestrator import Orchestra
-from core.mcp import MCPConfig
+from moonlight_ai import Orchestra,  MCPConfig
 
 # Create web search MCP configuration
 search_config = MCPConfig(
@@ -288,7 +287,7 @@ print(results)
 ### 🔍 DeepResearch - Comprehensive Industry Analysis
 
 ```python
-from core.modes.deepsearch import DeepResearcher
+from moonlight_ai import DeepResearcher
 
 # Create a deep researcher for emerging technologies
 tech_researcher = DeepResearcher(
@@ -318,8 +317,7 @@ print(tech_researcher.output)
 ### ⚡ Workflow - Automated Trading Bot
 
 ```python
-from core.agent_architecture import Agent
-from core.modes.workflow import WorkflowGenerator, Workflow
+from moonlight_ai import WorkflowGenerator, Workflow, Agent
 
 # Create specialized trading agents
 market_scanner = Agent(
@@ -483,7 +481,7 @@ Moonlight includes validated configurations for thousands of MCP servers across 
 ### **MCPRegistry - Configuration Management**
 
 ```python
-from core.mcp import MCPRegistry, MCPConfig
+from moonlight_ai import MCPRegistry, MCPConfig
 
 # Create and register configurations
 registry = MCPRegistry()
