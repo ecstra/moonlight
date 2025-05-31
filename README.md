@@ -357,6 +357,7 @@ print(results)
 }
 ```
 
+#### Trading Bot Example
 ```python
 from moonlight_ai import WorkflowGenerator, Workflow, Agent
 
@@ -448,6 +449,57 @@ trading_workflow = Workflow(
 
 print('📈 Starting automated trading workflow...')
 trading_workflow.run()
+```
+
+#### Simple TIme Workflow
+```python
+from moonlight_ai import Workflow, Agent
+
+# Define a simple agent
+simple_agent = Agent(
+    name="minute_checker",
+    instruction="Check the current minute.",
+    provider=provider,
+    model_name="deepseek-chat"
+)
+
+# Agents registry
+available_agents = {
+    "minute_checker": simple_agent
+}
+
+# Simple manual workflow (not using WorkflowGenerator)
+simple_workflow_json = {
+    "blocks": {
+        "block_1": {
+            "type": "agent",
+            "agent_name": "minute_checker",
+            "task": "Check current minute. If odd, print 'odd'. Else, print 'even'.",
+            "connected_to": []
+        }
+    },
+    "connections": {
+        "block_1": []
+    },
+    "trigger_block": {
+        "type": "agent",
+        "agent_name": "minute_checker",
+        "task": "Check current system time.",
+        "condition": "Current minute is odd number.",
+        "repeat": "1m"
+    }
+}
+
+# Create and run the workflow
+workflow = Workflow(
+    workflow=simple_workflow_json,
+    available_agents=available_agents,
+    provider=provider,
+    model_name="deepseek-chat"
+)
+
+print('⏱️ Running simple minute-checker workflow...')
+workflow.run()
 ```
 
 > Note: This mode will run the workflow if trigger is met and the trigger is reset at ever "N" repeat interval set indefinitely. (e.g., 15m -> Every 15 minutes)
@@ -604,7 +656,8 @@ agent_deepseek = Agent(
 ## ToDo
 
 - [ ] Code Cleanup
-- [ ] Seperation between default and user added mcp servers so user added ones do not  get lost
+- [ ] Add console.logs to workflow
+- [ ] Async Running for Hive Architecture
 - [ ] Unit tests and full workflow/deepresearch test
 
 ---
