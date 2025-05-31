@@ -1,15 +1,10 @@
 import logging, os
-from moonlight_sdk import Agent, Hive, MoonlightProvider
+from moonlight_ai import Agent, Hive, MoonlightProvider
 from textwrap import dedent
 from dotenv import load_dotenv
 load_dotenv()
 
-
 logging.basicConfig(level=logging.WARNING)
-
-# Set up hive logger with custom formatting
-logger = logging.getLogger("hive")
-logger.setLevel(logging.DEBUG)
 
 sentiment_role = """
 You are a specialized sentiment analysis assistant. Your ONLY task is analyzing text sentiment and responding with EXACTLY ONE DIGIT:
