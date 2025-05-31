@@ -41,7 +41,12 @@ Moonlight transforms how you build AI applications by providing a comprehensive 
 ```bash
 # Install
 uv pip install moonlight-ai
+
+# Install Playwright (NEEDED)
+playwright install
 ```
+
+> Note: Install NPX and UVX on your machine to get the most out of MCP Compatibility.
 
 ---
 
