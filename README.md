@@ -282,6 +282,81 @@ print(results)
 
 ### ⚡ Workflow - Automated Trading Bot
 
+#### Example Schema
+```json
+{
+  "blocks": {
+    "block_1": {
+      "type": "agent",
+      "agent_name": "market_scanner",
+      "task": "Scan market data for stocks crossing above 20-day moving average using a general market data API and filter results to only include stocks with volume exceeding 150% of 30-day average",
+      "connected_to": [
+        {
+          "next_block": "block_2",
+          "condition": "None"
+        }
+      ]
+    },
+    "block_2": {
+      "type": "agent",
+      "agent_name": "risk_manager",
+      "task": "Calculate risk/reward ratio for each qualifying stock and reject any stock with risk/reward ≤ 2:1",
+      "connected_to": [
+        {
+          "next_block": "block_3",
+          "condition": "Some random condition"
+        },
+        {
+          "next_block": "block_4",
+          "condition": "Another random condition"
+        }
+      ]
+    },
+    "block_3": {
+      "type": "agent",
+      "agent_name": "risk_manager",
+      "task": "Determine position size based on account balance (placeholder $10,000) and 2% stop-loss",
+      "connected_to": [
+        {
+          "next_block": "block_4",
+          "condition": "None"
+        }
+      ]
+    },
+    "block_4": {
+      "type": "agent",
+      "agent_name": "trade_executor",
+      "task": "For approved trades, set stop-loss at 2% below entry price and set take-profit at 4% above entry price",
+      "connected_to": [
+        {
+          "next_block": "block_5",
+          "condition": "None"
+        }
+      ]
+    },
+    "block_5": {
+      "type": "agent",
+      "agent_name": "trade_executor",
+      "task": "Execute trades through a generic brokerage API (authentication details required)",
+      "connected_to": []
+    }
+  },
+  "connections": {
+    "block_1": ["block_2"],
+    "block_2": ["block_3", "block_4"],
+    "block_3": ["block_4"],
+    "block_4": ["block_5"]
+  },
+  "trigger_block": {
+    "type": "agent",
+    "agent_name": "market_scanner",
+    "task": "Scan market data for stocks crossing above 20-day moving average",
+    "condition": "Is it between 9:30 AM - 4:00 PM EST?",
+    "repeat": "15m"
+  }
+}
+```
+
 ```python
 from moonlight_ai import WorkflowGenerator, Workflow, Agent
 
@@ -339,32 +414,26 @@ print('🤖 Generating automated trading workflow...')
 # Step 1: Generate first level workflow
 print('\n1. Generating first level workflow...')
 first_level_result = wfg.generate_first_level(trading_prompt)
-print(f'First level result: {first_level_result}')
+print(f'First level result: {first_level_result}\n\n')
 
-# Step 2: Expand first workflow (simulate critique and requirements)
-# You should check the first level, then answer the requirements and then expand the workflow based on the critique.
-print('\n2. Expanding first workflow...')
-# Simulating a critique for the first level workflow
-critique = "The workflow needs to be more specific about time checking and should include proper error handling."
+# Process first level result
+previous_level_details = first_level_result["first_level_workflow"]
+critique = first_level_result["critique"]
 
-# Assuming we have some answered requirements based on the critique
-answered_requirements = [
-	"Q. xxx; A. Check current minute value",
-	"Q. xxx; A. Determine if minute is even or odd",
-	"Q. xxx; A. Print appropriate message"
-]
+# Answer the requirements
+answered_requirements = []
+for requirement in first_level_result["requirements"]:
+    requirement_answer = input(f"Answer the requirement: {requirement}\n")
+    answered_requirements.append(f"Q. {requirement}; A. {requirement_answer}\n\n")
 
-previous_level_details = first_level_result
-expanded_workflow = wfg.expand_first_workflow(
-	critique=critique,
-	answered_requirements=answered_requirements,
-	previous_level_details=previous_level_details
-)
-print(f'Expanded workflow: {expanded_workflow}')
-
-# Step 3: Generate final workflow
+# Step 2: Generate final workflow
 print('\n3. Generating final workflow...')
-final_workflow = wfg.generate_final_workflow(expanded_workflow)
+final_workflow = wfg.generate_final_workflow(
+    critique=critique,
+	answered_requirements=answered_requirements,
+	previous_level_details=first_level_result
+)
+
 # Final Workflow can be a json or generated.
 print(f'Final generated workflow: {final_workflow}')
 print('\n' + '=' * 60)
@@ -380,6 +449,8 @@ trading_workflow = Workflow(
 print('📈 Starting automated trading workflow...')
 trading_workflow.run()
 ```
+
+> Note: This mode will run the workflow if trigger is met and the trigger is reset at ever "N" repeat interval set indefinitely. (e.g., 15m -> Every 15 minutes)
 
 ---
 
