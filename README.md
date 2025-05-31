@@ -66,12 +66,8 @@ Process patient data, schedule appointments, and coordinate care teams
 ### Installation
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Install
+uv pip install moonlight-ai
 ```
 
 ---
