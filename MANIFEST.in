@@ -1,10 +1,8 @@
 include README.md
 include requirements.txt
 include LICENSE
-recursive-include moonlight *.json
 recursive-include moonlight *.py
-recursive-exclude moonlight *.pyc
 recursive-exclude moonlight __pycache__
-include moonlight_ai/core/mcp/mcp_registry.db
-include moonlight_ai/mcp_servers/mcp_registry_storage.json
-recursive-include moonlight_ai/core/mcp *.db
+recursive-exclude moonlight *.pyc
+include moonlight/core/processors/nltk_data/tokenizers/punkt/PY3/README
+include moonlight/core/token/.token_cache/.gitkeep

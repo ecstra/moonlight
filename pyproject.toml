@@ -3,23 +3,24 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "moonlight_ai"
-version = "0.1.5"
-description = "🌙 Advanced Multi-Agent AI Orchestration Framework"
+name = "moonlight-ai"
+version = "0.1.10"
+description = "Lightweight AI Agents SDK for building intelligent automation systems"
 readme = "README.md"
 requires-python = ">=3.8"
-license = "MIT"
+license = {text = "MIT"}
 authors = [
     {name = "ecstra", email = "themythbustertmb@gmail.com"}
 ]
 keywords = [
-    "ai", "agents", "workflow", "automation", "multi-agent",
-    "artificial-intelligence", "llm", "gpt", "claude", "deepseek",
-    "orchestration", "hive", "orchestra", "deepsearch", "mcp", "openai"
+    "ai", "agents", "automation", "sdk", "rag", "llm",
+    "artificial-intelligence", "openai", "deepseek", "groq",
+    "web-search", "document-processing", "qdrant", "embeddings"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
@@ -27,32 +28,32 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "openai>=1.61.1",
-    "cloudpickle>=3.1.1",
     "playwright>=1.50.0",
     "rich>=13.9.4",
-    "sympy>=1.13.3",
     "python-dotenv>=1.0.1",
     "python-docx>=1.1.2",
     "PyPDF2>=3.0.1",
-    "urllib3>=2.3.0",
-    "beautifulsoup4>=4.13.3",
+    "beautifulsoup4>=4.12.0",
     "requests>=2.32.3",
-    "pandas>=2.2.3",
-    "numpy>=2.2.2",
-    "pillow>=10.4.0",
-    "einops>=0.8.1",
+    "numpy>=2.0.0",
+    "pillow>=10.0.0",
     "html2text>=2024.2.26",
-    "markdown>=3.7",
-    "python-pptx>=1.0.2",
     "crawl4ai>=0.4.248",
-    "xvfbwrapper>=0.2.9",
-    "mcp>=1.9.1",
-    "transformers>=4.45.2",
-    "websockets==15.0.1"
+    "qdrant-client>=1.16.0",
+    "tiktoken>=0.12.0",
+    "transformers>=4.45.0",
+    "nltk>=3.9.0",
+    "openpyxl>=3.1.0",
+    "xlrd>=2.0.0",
 ]
+
+[project.optional-dependencies]
+pptx = ["python-pptx>=1.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/ecstra/moonlight"
@@ -66,10 +67,10 @@ zip-safe = false
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["moonlight_ai*"]
-exclude = ["tests*", "*.egg-info*", "build*", "dist*"]
+include = ["moonlight*"]
+exclude = ["tests*", "*.egg-info*", "build*", "dist*", "__pycache__*"]
 
 [tool.setuptools.package-data]
-"moonlight_ai.core.mcp" = ["*.db"]
-"moonlight_ai.mcp_servers" = ["*.json"]
-moonlight_ai = ["*.json"]
+"*" = ["*.json", "*.md"]
+"moonlight.core.processors" = ["nltk_data/**/*"]
+"moonlight.core.token" = [".token_cache/.gitkeep"]

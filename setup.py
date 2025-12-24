@@ -7,7 +7,7 @@ def read_readme():
     if os.path.exists(readme_path):
         with open(readme_path, "r", encoding="utf-8") as fh:
             return fh.read()
-    return "🌙 Advanced Multi-Agent AI Orchestration Framework"
+    return "Lightweight AI Agents SDK for building intelligent automation systems"
 
 # Read requirements from requirements.txt
 def read_requirements():
@@ -16,39 +16,38 @@ def read_requirements():
         with open(req_path, "r", encoding="utf-8") as fh:
             return [line.strip() for line in fh if line.strip() and not line.startswith("#")]
     
-    # Full requirements list - everything included by default
+    # Fallback requirements list
     return [
         "openai>=1.61.1",
-        "cloudpickle>=3.1.1", 
         "playwright>=1.50.0",
         "rich>=13.9.4",
-        "sympy>=1.13.3",
         "python-dotenv>=1.0.1",
         "python-docx>=1.1.2",
         "PyPDF2>=3.0.1",
-        "urllib3>=2.3.0",
-        "beautifulsoup4>=4.13.3",
+        "beautifulsoup4>=4.12.0",
         "requests>=2.32.3",
-        "pandas>=2.2.3",
-        "numpy>=2.2.2",
-        "pillow>=10.4.0",
+        "numpy>=2.0.0",
+        "pillow>=10.0.0",
         "html2text>=2024.2.26",
-        "markdown>=3.7",
-        "python-pptx>=1.0.2",
         "crawl4ai>=0.4.248",
-        "mcp>=1.9.1",
+        "qdrant-client>=1.16.0",
+        "tiktoken>=0.12.0",
+        "transformers>=4.45.0",
+        "nltk>=3.9.0",
+        "openpyxl>=3.1.0",
+        "xlrd>=2.0.0",
     ]
 
 setup(
-    name="moonlight",
-    version="0.1.0",
+    name="moonlight-ai",
+    version="0.1.10",
     author="ecstra",
     author_email="themythbustertmb@gmail.com",
-    description="🌙 Advanced Multi-Agent AI Orchestration Framework",
+    description="Lightweight AI Agents SDK for building intelligent automation systems",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     url="https://github.com/ecstra/moonlight",
-    packages=find_packages(),
+    packages=find_packages(include=["moonlight", "moonlight.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -60,14 +59,21 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     python_requires=">=3.8",
     install_requires=read_requirements(),
     include_package_data=True,
+    package_data={
+        "": ["*.json", "*.md"],
+        "moonlight.core.processors": ["nltk_data/**/*"],
+        "moonlight.core.token": [".token_cache/.gitkeep"],
+    },
     keywords=[
-        "ai", "agents", "workflow", "automation", "multi-agent",
-        "artificial-intelligence", "llm", "gpt", "claude", "deepseek",
-        "orchestration", "hive", "orchestra", "deepsearch", "mcp", "openai"
+        "ai", "agents", "automation", "sdk", "rag", "llm",
+        "artificial-intelligence", "openai", "deepseek", "groq",
+        "web-search", "document-processing", "qdrant", "embeddings"
     ],
     zip_safe=False,
 )
