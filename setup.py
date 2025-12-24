@@ -39,7 +39,7 @@ def read_requirements():
     ]
 
 setup(
-    name="moonlight",
+    name="moonlight-ai",
     version="0.2.0",
     author="ecstra",
     author_email="themythbustertmb@gmail.com",
