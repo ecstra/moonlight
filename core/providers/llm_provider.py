@@ -3,7 +3,7 @@ from typing import List, Dict
 from openai import OpenAI
 from ..agent_architecture.base import MoonlightProvider
 
-logger = logging.getLogger("hive")
+logger = logging.getLogger("Runner")
 
 class LLMProviderException(Exception):
     pass

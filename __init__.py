@@ -9,23 +9,24 @@
 # - Shell execution is stripped down
 # - Orhcestration is stripped down
 #
-# WHAT IS NOT STRIPPED DOWN:
-# - Agent Architecture
-# - LLM Provider
-# - Token Counter
-# - JSON Parser
-# - Agent History
-# - Agent Response
-#
 # WHATS ADDED:
 # - Async RAG System (Needs custom hosting)
 #
-# This is a stripped down version of the Moonlight SDK.
+# WHY:
 # It is designed to be lightweight and easy to use for basic agent orchestration tasks.
 # Shifting this project towards being an AgentsSDK used for building systems as compared to Agents as a Platform.
+# This makes it easier to build custom pipelines as per the use-case.
+#
+# FEATURES:
+# - Agent Model + Runner
+# - Aggregated Provider (Multiple Options, including local)
+# - In-Build Agent history with role updation/editing
+# - Custom Response structure (Json Mode)
+# - Custom RAG System (Must provide hosted QDRANT URL)
+# - Async Web search
 ##############################################################################################
 
-__version__ = "internal"
+__version__ = "0.2"
 __author__ = "ecstra"
 __description__ = "Advanced Multi-Agent AI Orchestration Framework"
 
@@ -33,16 +34,15 @@ import os
 os.environ['TOKENIZERS_PARALLELISM'] = "false"
 
 # Core Agent Architecture
-from .core.agent_architecture import MoonlightProvider, Agent, Hive
+from .core.agent_architecture import MoonlightProvider, Agent, Runner
 from .core.functionality import WebSearch
 from .core.processors import FileProcessor
-from .utils import AsyncTimer
 
 __all__ = [
     # Core Components
     "MoonlightProvider",
     "Agent", 
-    "Hive",
+    "Runner",
     
     # RAG and Web Search
     "RAGSystem",

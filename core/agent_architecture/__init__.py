@@ -1,9 +1,9 @@
 from .agent import Agent
-from .hive import Hive
+from .runner import Runner
 from .base import MoonlightProvider
 
 __all__ = [
     "Agent",
-    "Hive",
+    "Runner",
     "MoonlightProvider"
 ]

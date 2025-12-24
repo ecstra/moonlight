@@ -1,26 +1,10 @@
-##############################################################################################
-# THIS IS A STRIPPED DOWN VERSION SPECIFICALLY FOR TEXT-BASED AGENTS
-#
-# CODE EXECUTION IS STRIPPED DOWN
-# MCP CLIENTS ARE STRIPPED DOWN
-# IMAGES ARE STRIPPED DOWN
-# AGENT CALLING ANOTHER AGENT IS STRIPPED DOWN
-# DYNAMIC MULTI AGENT DISCOVERY IS STRIPPED DOWN
-# DYNAMIC MULTI AGENT ORCHESTRATION IS STRIPPED DOWN
-# DEEP RESEARCH IS STRIPPED DOWN
-# WORKFLOW IS STRIPPED DOWN
-#
-# THIS IS NOT THE FULL VERSION OF THE HIVE AGENT ARCHITECTURE
-# DOWNLOAD THE FULL VERSION FOR CODE EXECUTION
-##############################################################################################
-
 import logging
 
 from rich.console import Console
 from rich.markdown import Markdown
 
-from ...src.json_parser import parse_json
-from ...core.token import TokenCounter
+from src.json_parser import parse_json
+from core.token import TokenCounter
 
 from .base import MoonlightProvider
 
@@ -30,10 +14,16 @@ logger = logging.getLogger(__name__)
 class AgentException(Exception):
     pass
 
-token_counter = TokenCounter(model="deepseek")
+# Lazy initialization of token counter
+_token_counter = None
+
+def get_token_counter():
+    global _token_counter
+    if _token_counter is None:
+        _token_counter = TokenCounter(model="cl100k_base")
+    return _token_counter
 
 class AgentHistory:
-    global token_counter
     
     def __init__(
             self,
@@ -47,7 +37,7 @@ class AgentHistory:
         self.max_length = max_length
         
         # Initialize the token counter and total tokens
-        self.token_counter = token_counter
+        self.token_counter = get_token_counter()
         
         # Total tokens in the convo
         self.conversation_tokens = 0

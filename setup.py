@@ -67,7 +67,7 @@ setup(
     keywords=[
         "ai", "agents", "workflow", "automation", "multi-agent",
         "artificial-intelligence", "llm", "gpt", "claude", "deepseek",
-        "orchestration", "hive", "orchestra", "deepsearch", "mcp", "openai"
+        "orchestration", "Runner", "orchestra", "deepsearch", "mcp", "openai"
     ],
     zip_safe=False,
 )

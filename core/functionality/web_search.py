@@ -5,7 +5,7 @@ from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode, BrowserConfig
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter
 
-logger = logging.getLogger("hive")
+logger = logging.getLogger("Runner")
 
 class AsyncContentExtractor:
     def __init__(self, max_concurrent=10):

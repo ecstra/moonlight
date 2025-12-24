@@ -5,13 +5,15 @@ logger = logging.getLogger(__name__)
 
 console  = Console()
 
+class MoonlightProviderException(Exception): pass
+
 class MoonlightProvider:
     def __init__(
             self,
             provider_name: str = None,
             provider_url: str = None,
             api_key: str = None,
-            thinking: bool = True,
+            thinking: bool = True
         ):
         
         self.provider_name = provider_name
@@ -20,8 +22,8 @@ class MoonlightProvider:
         self.thinking = thinking
         
         if not self.provider_name and not self.provider_url:
-            logger.info("Provider Name/URL is not set. Set it in the Agent. Defaulting to OpenAI.")
-            self.provider_name = 'openai'
+            raise MoonlightProviderException("Provider Name/URL is not set.")
+        
             
         if not self.api_key:
             raise ValueError("API key is not set. Set it in the Agent.")

@@ -14,7 +14,7 @@ Moonlight transforms how you build AI applications by providing a comprehensive 
 
 **🏗️ Multiple Execution Modes**
 
-- **Hive** - Single agent with advanced tooling
+- **Runner** - Single agent with advanced tooling
 - **Orchestra** - Multi-agent collaboration
 - **DeepResearch** - Recursive web research
 - **Workflow** - Trigger-based automation
@@ -51,11 +51,11 @@ playwright install
 
 ## 💡 Usage Examples
 
-### 🏠 Single Agent (Hive) - Content Creation Assistant
+### 🏠 Single Agent (Runner) - Content Creation Assistant
 
 ```python
 import os
-from moonlight_ai import Agent, Hive, MoonlightProvider
+from moonlight_ai import Agent, Runner, MoonlightProvider
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -76,7 +76,7 @@ content_agent = Agent(
 )
 
 # Generate a technical blog post
-response = Hive(content_agent).run("""
+response = Runner(content_agent).run("""
 Write a 500-word blog post about the benefits of microservices architecture, 
 including real-world examples and potential challenges.
 """)
@@ -128,7 +128,7 @@ analyst_agent = Agent(
 )
 
 # Analyze a stock
-analysis = Hive(analyst_agent).run("""
+analysis = Runner(analyst_agent).run("""
 Analyze Tesla (TSLA) stock based on recent performance, EV market trends, 
 and competition. Consider Q4 2024 earnings and 2025 outlook.
 """)
@@ -170,7 +170,7 @@ assistant_agent = Agent(
 )
 
 # Get contextual information
-response = Hive(assistant_agent).run("""
+response = Runner(assistant_agent).run("""
 What's the current time in Mumbai? Also check the weather and let me know 
 if it's a good time for an outdoor meeting this afternoon.
 """)
@@ -510,7 +510,7 @@ workflow.run()
 
 ## 🏗️ Architecture Overview
 
-### 🏠 **Hive - Single Agent Engine**
+### 🏠 **Runner - Single Agent Engine**
 
 Perfect for focused tasks requiring deep expertise:
 
@@ -658,7 +658,7 @@ agent_deepseek = Agent(
 
 - [ ] Code Cleanup
 - [ ] Add console.logs to workflow
-- [ ] Async Running for Hive Architecture
+- [ ] Async Running for Runner Architecture
 - [ ] Unit tests and full workflow/deepresearch test
 
 ---

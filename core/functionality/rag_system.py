@@ -1,8 +1,4 @@
-######################################################################################
-#  Need to make this async                                                           #
-######################################################################################
-
-import os, uuid, logging, time, asyncio
+import os, uuid, logging, time
 
 from hashlib import md5
 from pathlib import Path
@@ -14,7 +10,7 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import PointStruct
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
-from ...src.helpers import log_warning
+from src.helpers import log_warning
 from ..processors import FileProcessor
 from ..providers.rag_provider import RAGProvider
 from ..processors.chunk_processor import DocumentChunker
@@ -39,6 +35,8 @@ class RAGResult(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 class RAGSystem:
+    global QDRANT_URL
+    
     def __init__(
         self, 
         namespace: str = "", 
@@ -47,7 +45,8 @@ class RAGSystem:
         chunk_max_size: int = 1200,
         top_k: int = 15,
         top_n_rerank: int = 5,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        qdrant_url: Optional[str] = None
     ):
 
         if not namespace:
@@ -55,6 +54,8 @@ class RAGSystem:
             self.namespace = "temporary"
         else:
             self.namespace = namespace
+        
+        if qdrant_url is not None: QDRANT_URL.replace(QDRANT_URL, qdrant_url)
         
         self.max_sources = max_sources
         self.top_k = top_k

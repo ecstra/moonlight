@@ -1,31 +1,18 @@
-##############################################################################################
-# THIS IS A STRIPPED DOWN VERSION SPECIFICALLY FOR TEXT-BASED AGENTS
-#
-# CODE EXECUTION IS STRIPPED DOWN
-# MCP CLIENTS ARE STRIPPED DOWN
-# IMAGES ARE STRIPPED DOWN
-# AGENT CALLING ANOTHER AGENT IS STRIPPED DOWN
-#
-# THIS IS NOT THE FULL VERSION OF THE HIVE AGENT ARCHITECTURE
-# DOWNLOAD THE FULL VERSION FOR CODE EXECUTION
-##############################################################################################
-
 import logging, re
 from textwrap import dedent
 
 from .agent import Agent, AgentResponse
 
-from ...core.providers.llm_provider import CompletionInput, OpenAIProvider
-from ...src.json_parser import parse_json
+from ..providers.llm_provider import CompletionInput, OpenAIProvider
+from src.json_parser import parse_json
 
-logger = logging.getLogger("hive")
+logger = logging.getLogger("Runner")
 
-# Hive is the main class that runs the agent architecture.
-class Hive:
+class Runner:
     def __init__(
             self,
-            agent: Agent,
-        ):
+            agent: Agent
+        ) -> AgentResponse:
         
         # Agent
         self.agent = agent
@@ -153,7 +140,7 @@ class Hive:
     def run(
             self, 
             message: str = ""
-        ):
+        ) -> AgentResponse:
         
         """
         Run the agent with the given message and images.

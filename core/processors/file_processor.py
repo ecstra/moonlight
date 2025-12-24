@@ -1,6 +1,4 @@
-# NEEDS SEVERE OVERHAUL AND ADITION OF BETTER OCR
-
-import sqlite3, docx, PyPDF2, csv, openpyxl
+import sqlite3, docx, PyPDF2, csv, openpyxl, xlrd
 from typing import Union, List
 from pptx import Presentation
 from pathlib import Path
@@ -72,10 +70,6 @@ class FileProcessor:
         ext = Path(file_path).suffix.lower()
         texts = []
         if ext == ".xls":
-            try:
-                import xlrd
-            except ImportError:
-                raise ProcessorException("xlrd module is required for .xls files.")
             try:
                 workbook = xlrd.open_workbook(file_path)
             except xlrd.compdoc.CompDocError as e:
