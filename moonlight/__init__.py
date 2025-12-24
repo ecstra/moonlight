@@ -26,7 +26,7 @@
 # - Async Web search
 ##############################################################################################
 
-__version__ = "0.2"
+__version__ = "0.1.10"
 __author__ = "ecstra"
 __description__ = "Advanced Multi-Agent AI Orchestration Framework"
 

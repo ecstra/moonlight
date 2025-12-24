@@ -4,9 +4,15 @@
 
 > **Lightweight AI Agents SDK for building intelligent automation systems**
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Version](https://img.shields.io/badge/version-0.2-brightgreen.svg)](https://github.com/ecstra/moonlight)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![PyPI version](https://img.shields.io/pypi/v/moonlight-ai.svg)](https://pypi.org/project/moonlight-ai/)
 
 A minimal SDK for building agent-based systems and RAG pipelines. Moonlight provides composable primitives without prescribing orchestration or execution models. It is intentionally small, designed to be understood, extended, and integrated into larger systems rather than serving as a framework.
+
+## Installation
+
+```bash
+uv pip install moonlight-ai
+```
 
 ---
 
