@@ -59,7 +59,6 @@ lxml==6.0.2
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
-moonlight @ file:///C:/InfinityX/Automa/moonlight/dist/moonlight-0.2.0-py3-none-any.whl
 more-itertools==10.8.0
 multidict==6.7.0
 networkx==3.6.1
