@@ -32,6 +32,4 @@ pyjwt==2.3.0
 pydantic[email]>=2.10.6
 email-validator>=2.1.0
 itsdangerous==2.2.0
-
-kubernetes==32.0.1
 mcp==1.9.1

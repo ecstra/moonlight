@@ -1,4 +1,3 @@
-
 <p align="left">
   <img src="https://github.com/user-attachments/assets/e3ccd296-65d6-4774-90cb-8ecda6714763" width="500" alt="MoonLight">
 </p>
@@ -283,6 +282,7 @@ print(results)
 ### ⚡ Workflow - Automated Trading Bot
 
 #### Example Schema
+
 ```json
 {
   "blocks": {
@@ -358,6 +358,7 @@ print(results)
 ```
 
 #### Trading Bot Example
+
 ```python
 from moonlight_ai import WorkflowGenerator, Workflow, Agent
 
@@ -452,6 +453,7 @@ trading_workflow.run()
 ```
 
 #### Simple TIme Workflow
+
 ```python
 from moonlight_ai import Workflow, Agent
 
@@ -652,7 +654,6 @@ agent_deepseek = Agent(
 
 ---
 
-
 ## ToDo
 
 - [ ] Code Cleanup
@@ -667,3 +668,5 @@ agent_deepseek = Agent(
 Made with 🌙 by the Moonlight Team
 
 </div>
+
+api
