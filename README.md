@@ -72,7 +72,7 @@ structured_agent = Agent(
     name="analyzer",
     instruction="Extract structured insights.",
     provider=provider,
-    model_name="gpt-4",
+    model_name="openai/gpt-5.2-pro",
     json_mode=True,
     json_schema=schema
 )
@@ -137,8 +137,6 @@ Supported providers: OpenAI, DeepSeek, Together, Groq, Google AI, HuggingFace, G
 
 ## Building Locally
 
-Before publishing, build and test the package:
-
 ```bash
 # Build distribution
 pip install build twine
@@ -149,10 +147,6 @@ pip install dist/moonlight-0.2.0-py3-none-any.whl
 
 # Test
 python -c "from moonlight import Agent, Runner; print('OK')"
-
-# Publish (after testing)
-python -m twine upload --repository testpypi dist/*
-python -m twine upload dist/*
 ```
 
 ## Limitations
@@ -170,8 +164,4 @@ These are intentionally excluded to keep the scope minimal. Build your own orche
 
 ## Status
 
-Personal project, actively maintained. Designed for learning and prototyping agent systems with production-aware patterns. Suitable for integration into larger systems but not a complete application framework.
-
-## License
-
-MIT License - see LICENSE file for details.
+Personal project. Designed for learning and prototyping agent systems with production-aware patterns. Suitable for integration into larger systems but not a complete application framework.
