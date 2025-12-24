@@ -3,8 +3,8 @@ import logging
 from rich.console import Console
 from rich.markdown import Markdown
 
-from src.json_parser import parse_json
-from core.token import TokenCounter
+from ...src.json_parser import parse_json
+from ..token import TokenCounter
 
 from .base import MoonlightProvider
 

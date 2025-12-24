@@ -1,9 +1,15 @@
 import sqlite3, docx, PyPDF2, csv, openpyxl, xlrd
 from typing import Union, List
-from pptx import Presentation
 from pathlib import Path
 
 from .base import ProcessorException
+
+# Optional PPTX support
+try:
+    from pptx import Presentation
+    PPTX_AVAILABLE = True
+except ImportError:
+    PPTX_AVAILABLE = False
 
 class FileProcessor:
     def __init__(self, files: Union[List[str], str] = []):
@@ -113,7 +119,12 @@ class FileProcessor:
         conn.close()
         return "\n".join(content)
     
-    def _process_pptx(self, file_path: str) -> str:        
+    def _process_pptx(self, file_path: str) -> str:
+        if not PPTX_AVAILABLE:
+            raise ProcessorException(
+                "PPTX support requires python-pptx. Install with: pip install moonlight[pptx]"
+            )
+        
         texts = []
         prs = Presentation(file_path)
         

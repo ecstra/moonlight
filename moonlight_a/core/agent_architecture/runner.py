@@ -4,7 +4,7 @@ from textwrap import dedent
 from .agent import Agent, AgentResponse
 
 from ..providers.llm_provider import CompletionInput, OpenAIProvider
-from src.json_parser import parse_json
+from ...src.json_parser import parse_json
 
 logger = logging.getLogger("Runner")
 

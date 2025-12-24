@@ -54,3 +54,15 @@ htmlcov/
 
 # Documentation
 docs/_build/
+
+# Token cache
+core/token/.token_cache/
+
+# NLTK data
+core/processors/nltk_data/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~

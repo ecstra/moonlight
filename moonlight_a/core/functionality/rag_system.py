@@ -10,7 +10,7 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import PointStruct
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
-from src.helpers import log_warning
+from ...src.helpers import log_warning
 from ..processors import FileProcessor
 from ..providers.rag_provider import RAGProvider
 from ..processors.chunk_processor import DocumentChunker
