@@ -73,7 +73,7 @@ class AgentHistory:
     
     def get_history(self) -> List[Dict[str, Union[str, List[str]]]]: return self._history
         
-    def add(
+    async def add(
         self, 
         role: str, 
         content: Content
@@ -81,7 +81,7 @@ class AgentHistory:
         # Convert all images to base64
         # this includes downlaoding and local file processing
         if content.images and len(content.images) > 0:
-            content.images = asyncio.run(process_images(content.images))
+            content.images = await process_images(content.images)
             # some images might be None 
             # if they are deemed to be invalid while processing,
             # so just remove them

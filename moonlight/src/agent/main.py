@@ -30,6 +30,7 @@ class Agent:
         model: str,
         output_schema: Optional[Union[Type[BaseModel], Type[dataclass]]] = None,
         system_role: str = "",
+        image_gen: bool = False,
         **kwargs
     ):
         """
@@ -48,6 +49,7 @@ class Agent:
         self._provider = provider
         self._output_schema = output_schema
         self._params = kwargs
+        self._image_gen = image_gen
         
         # total tokens
         self._total_tokens = 0
@@ -87,6 +89,9 @@ class Agent:
             AgentError: If the model name is empty, if unknown parameters are provided, 
                         or if the output schema is invalid.
         """
+        if self._image_gen and self._output_schema:
+            raise AgentError("Image Generation does not support Custom Output Schemas")
+        
         if not self._model or self._model == "":
             raise AgentError("Model cannot be empty")
          
@@ -171,20 +176,28 @@ class Agent:
         """
         custom_output = True if self._output_schema else False
         
-        self._history.add(
+        await self._history.add(
             role="user",
             content=prompt
         )
         
+        optional = {}
+
+        if custom_output:
+            optional["response_format"] = { "type": "json_object" }
+        
+        if self._image_gen:
+            optional["modalities"] = ["text", "image"]
+            
         response = await GetCompletion(
             provider=self._provider,
             model=self._model,
-            json_mode=custom_output,
             messages=self.get_history(),
-            **self._params
+            **self._params,
+            **optional
         )
-        
-        self._history.add(
+
+        await self._history.add(
             role="assistant",
             content=Content(
                 text=response.content,

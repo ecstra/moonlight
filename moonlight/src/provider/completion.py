@@ -109,7 +109,6 @@ async def GetCompletion(
     provider: Provider,
     model: str,
     messages: List[Dict[str, str]],
-    json_mode: Optional[bool] = False,
     **kwargs
 ) -> Completion:
     """
@@ -154,12 +153,7 @@ async def GetCompletion(
     unknown = set(kwargs) - allowed
     
     if unknown: raise GetCompletionError(f"Unknown properties: {unknown}")
-    
-    optional = {}
-
-    if json_mode:
-        optional["response_format"] = { "type": "json_object" }
-        
+          
     async with httpx.AsyncClient(timeout=300.0) as client:
         request = await client.post(
             url=f"{provider.get_source()}/chat/completions",
@@ -171,7 +165,6 @@ async def GetCompletion(
                 "model": model,
                 "messages": messages,
                 **kwargs,
-                **optional
             })
         )
         

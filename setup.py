@@ -25,7 +25,7 @@ def read_requirements():
 
 setup(
     name="moonlight-ai",
-    version="0.2.0",
+    version="0.2.2",
     author="ecstra",
     author_email="themythbustertmb@gmail.com",
     description="Lightweight AI Agents SDK for building intelligent automation systems",
@@ -48,7 +48,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=read_requirements(),
     include_package_data=True,
     package_data={
