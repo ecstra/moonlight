@@ -285,7 +285,7 @@ pip install build twine
 python -m build
 
 # Install locally
-pip install dist/moonlight-0.2.0-py3-none-any.whl
+pip install dist/moonlight_ai-0.2.0-py3-none-any.whl
 
 # Test
 python -c "from moonlight import Agent; print('OK')"

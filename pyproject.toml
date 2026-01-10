@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moonlight-ai"
-version = "0.2.0"
+version = "0.2.1"
 description = "Lightweight AI Agents SDK for building intelligent automation systems"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -33,9 +33,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    httpx==0.28.1
-    pydantic==2.12.5
-    requests==2.32.5
+    "httpx==0.28.1",
+    "pydantic==2.12.5",
+    "requests==2.32.5"
 ]
 
 [project.urls]
