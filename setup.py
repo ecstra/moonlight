@@ -18,29 +18,14 @@ def read_requirements():
     
     # Fallback requirements list
     return [
-        "openai>=1.61.1",
-        "playwright>=1.50.0",
-        "rich>=13.9.4",
-        "python-dotenv>=1.0.1",
-        "python-docx>=1.1.2",
-        "PyPDF2>=3.0.1",
-        "beautifulsoup4>=4.12.0",
-        "requests>=2.32.3",
-        "numpy>=2.0.0",
-        "pillow>=10.0.0",
-        "html2text>=2024.2.26",
-        "crawl4ai>=0.4.248",
-        "qdrant-client>=1.16.0",
-        "tiktoken>=0.12.0",
-        "transformers>=4.45.0",
-        "nltk>=3.9.0",
-        "openpyxl>=3.1.0",
-        "xlrd>=2.0.0",
+        "httpx==0.28.1",
+        "pydantic==2.12.5",
+        "requests==2.32.5"
     ]
 
 setup(
     name="moonlight-ai",
-    version="0.1.10",
+    version="0.2.0",
     author="ecstra",
     author_email="themythbustertmb@gmail.com",
     description="Lightweight AI Agents SDK for building intelligent automation systems",
@@ -54,11 +39,12 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9", 
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
@@ -66,14 +52,12 @@ setup(
     install_requires=read_requirements(),
     include_package_data=True,
     package_data={
-        "": ["*.json", "*.md"],
-        "moonlight.core.processors": ["nltk_data/**/*"],
-        "moonlight.core.token": [".token_cache/.gitkeep"],
+        "": ["*.json", "*.md"]
     },
     keywords=[
-        "ai", "agents", "automation", "sdk", "rag", "llm",
+        "ai", "agents", "automation", "sdk", "llm", "minimal",
         "artificial-intelligence", "openai", "deepseek", "groq",
-        "web-search", "document-processing", "qdrant", "embeddings"
+        "openrouter", "google", "together", "hugging-face"
     ],
     zip_safe=False,
 )
