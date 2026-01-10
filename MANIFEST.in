@@ -4,5 +4,3 @@ include LICENSE
 recursive-include moonlight *.py
 recursive-exclude moonlight __pycache__
 recursive-exclude moonlight *.pyc
-include moonlight/core/processors/nltk_data/tokenizers/punkt/PY3/README
-include moonlight/core/token/.token_cache/.gitkeep

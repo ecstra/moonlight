@@ -1,0 +1,3 @@
+To run all test, run the below:
+
+python -m unittest discover -s moonlight\src\tests -p "test_*.py"
