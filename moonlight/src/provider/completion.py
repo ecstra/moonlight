@@ -14,6 +14,15 @@ class Completion:
     error: Optional[str] = None
     total_tokens: Optional[int] = None
     
+    def model_dump(self) -> dict:
+        return {
+            "content": json.loads(self.content) if self.content else None,
+            "reasoning": self.reasoning,
+            "images": self.images,
+            "error": self.error,
+            "total_tokens": self.total_tokens
+        }
+        
     def __str__(self) -> str:
         if self.error:
             return f"CompletionError({self.error})"

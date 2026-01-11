@@ -230,7 +230,7 @@ class Agent:
             **self._params,
             **optional
         )
-
+        
         await self._history.add(
             role="assistant",
             content=Content(
@@ -240,16 +240,15 @@ class Agent:
         )
         
         self._total_tokens = response.total_tokens
-
-        # if response.error:
-        #     raise AgentError(f"Agent failed to generate response: {response.error}")
         
-        if custom_output and not response.error:
+        if custom_output:
+            if response.error:
+                raise AgentError(f"Agent failed to generate response: {response.error}")
             try:
-                response = ModelConverter.json_to_model(self._output_schema, response.content)
-            except: 
-                pass
-        
+                return ModelConverter.json_to_model(self._output_schema, response.content)
+            except:
+                pass    
+    
         return response
 
     def __str__(self):
