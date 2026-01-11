@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, Dict, List
 from pydantic import BaseModel
 from dataclasses import dataclass
+from enum import Enum
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -47,6 +48,48 @@ class DataclassInPydantic:
 class PydanticWithNested(BaseModel):
     id: int
     data: DataclassInPydantic
+
+
+# Enum test models
+class Status(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class Priority(int, Enum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
+
+class Color(Enum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+
+
+class Task(BaseModel):
+    title: str
+    status: Status
+    priority: Priority
+
+
+class PydanticWithOptionalEnum(BaseModel):
+    name: str
+    status: Optional[Status]
+
+
+@dataclass
+class DataclassWithEnum:
+    id: int
+    color: Color
+
+
+class NestedWithEnum(BaseModel):
+    task_id: int
+    task: Task
+    notes: List[str]
 
 
 class TestModelConverter(unittest.TestCase):
@@ -219,6 +262,155 @@ class TestModelConverter(unittest.TestCase):
         schema = ModelConverter.model_to_schema(TypeVariety)
         self.assertEqual(schema["properties"]["is_active"]["type"], "boolean")
         self.assertEqual(schema["properties"]["score"]["type"], "number")
+    
+    def test_string_enum_schema(self):
+        """Test schema generation for string-based enum"""
+        schema = ModelConverter.model_to_schema(Task)
+        
+        # Check status enum
+        status_schema = schema["properties"]["status"]
+        self.assertEqual(status_schema["type"], "string")
+        self.assertIn("enum", status_schema)
+        self.assertEqual(set(status_schema["enum"]), {"pending", "approved", "rejected"})
+        
+        # Check priority enum
+        priority_schema = schema["properties"]["priority"]
+        self.assertEqual(priority_schema["type"], "integer")
+        self.assertIn("enum", priority_schema)
+        self.assertEqual(set(priority_schema["enum"]), {1, 2, 3})
+    
+    def test_enum_in_nested_model_schema(self):
+        """Test schema generation with enum in nested model"""
+        schema = ModelConverter.model_to_schema(NestedWithEnum)
+        
+        # Check nested task has enum
+        task_schema = schema["properties"]["task"]
+        self.assertEqual(task_schema["type"], "object")
+        self.assertIn("status", task_schema["properties"])
+        
+        status_schema = task_schema["properties"]["status"]
+        self.assertEqual(status_schema["type"], "string")
+        self.assertIn("enum", status_schema)
+    
+    def test_dataclass_with_enum_schema(self):
+        """Test schema generation for dataclass with enum"""
+        schema = ModelConverter.model_to_schema(DataclassWithEnum)
+        
+        color_schema = schema["properties"]["color"]
+        self.assertEqual(color_schema["type"], "string")
+        self.assertIn("enum", color_schema)
+        self.assertEqual(set(color_schema["enum"]), {"red", "green", "blue"})
+    
+    def test_optional_enum_schema(self):
+        """Test schema generation with Optional enum field"""
+        schema = ModelConverter.model_to_schema(PydanticWithOptionalEnum)
+        
+        # Status should be in properties
+        self.assertIn("status", schema["properties"])
+        
+        # Status should not be required
+        self.assertNotIn("status", schema.get("required", []))
+        
+        # Status should still have enum values
+        status_schema = schema["properties"]["status"]
+        self.assertEqual(status_schema["type"], "string")
+        self.assertIn("enum", status_schema)
+    
+    def test_json_to_model_with_enum(self):
+        """Test converting JSON to model with enum values"""
+        data = {
+            "title": "Fix bug",
+            "status": "approved",
+            "priority": 2
+        }
+        result = ModelConverter.json_to_model(Task, data)
+        
+        self.assertIsInstance(result, Task)
+        self.assertEqual(result.title, "Fix bug")
+        self.assertEqual(result.status, Status.APPROVED)
+        self.assertEqual(result.priority, Priority.MEDIUM)
+    
+    def test_json_to_model_with_optional_enum(self):
+        """Test converting JSON to model with optional enum"""
+        # With enum value
+        data1 = {"name": "Test", "status": "pending"}
+        result1 = ModelConverter.json_to_model(PydanticWithOptionalEnum, data1)
+        self.assertEqual(result1.status, Status.PENDING)
+        
+        # Without enum value
+        data2 = {"name": "Test"}
+        result2 = ModelConverter.json_to_model(PydanticWithOptionalEnum, data2)
+        self.assertIsNone(result2.status)
+    
+    def test_json_to_nested_with_enum(self):
+        """Test converting JSON with nested model containing enum"""
+        data = {
+            "task_id": 123,
+            "task": {
+                "title": "Review PR",
+                "status": "pending",
+                "priority": 3
+            },
+            "notes": ["urgent", "needs review"]
+        }
+        result = ModelConverter.json_to_model(NestedWithEnum, data)
+        
+        self.assertEqual(result.task_id, 123)
+        self.assertEqual(result.task.status, Status.PENDING)
+        self.assertEqual(result.task.priority, Priority.HIGH)
+        self.assertEqual(result.notes, ["urgent", "needs review"])
+    
+    def test_model_to_string_with_enum(self):
+        """Test string generation for model with enum"""
+        result = ModelConverter.model_to_string(Task)
+        
+        # Should contain Status enum definition
+        self.assertIn("class Status(str, Enum):", result)
+        self.assertIn("PENDING = 'pending'", result)
+        self.assertIn("APPROVED = 'approved'", result)
+        self.assertIn("REJECTED = 'rejected'", result)
+        
+        # Should contain Priority enum definition
+        self.assertIn("class Priority(int, Enum):", result)
+        self.assertIn("LOW = 1", result)
+        self.assertIn("MEDIUM = 2", result)
+        self.assertIn("HIGH = 3", result)
+        
+        # Should contain Task model
+        self.assertIn("class Task(BaseModel):", result)
+        self.assertIn("title: str", result)
+        self.assertIn("status: Status", result)
+        self.assertIn("priority: Priority", result)
+    
+    def test_model_to_string_with_plain_enum(self):
+        """Test string generation for plain enum without str/int base"""
+        result = ModelConverter.model_to_string(DataclassWithEnum)
+        
+        # Should contain Color enum without extra base class
+        self.assertIn("class Color(Enum):", result)
+        self.assertIn("RED = 'red'", result)
+        self.assertIn("GREEN = 'green'", result)
+        self.assertIn("BLUE = 'blue'", result)
+    
+    def test_model_to_string_nested_with_enum(self):
+        """Test string generation for nested model with enum"""
+        result = ModelConverter.model_to_string(NestedWithEnum)
+        
+        # Should contain all enum definitions first
+        self.assertIn("class Status(str, Enum):", result)
+        self.assertIn("class Priority(int, Enum):", result)
+        
+        # Should contain nested Task model
+        self.assertIn("class Task(BaseModel):", result)
+        
+        # Should contain outer NestedWithEnum model
+        self.assertIn("class NestedWithEnum(BaseModel):", result)
+        self.assertIn("task: Task", result)
+        
+        # Enums should appear before models that use them
+        status_pos = result.index("class Status")
+        task_pos = result.index("class Task(BaseModel)")
+        self.assertLess(status_pos, task_pos)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import json
 from typing import Union, get_origin, get_args
 from dataclasses import fields, MISSING, is_dataclass
+from enum import Enum
 
 class ModelConverter:
     """
@@ -43,6 +44,28 @@ class ModelConverter:
                     "items": ModelConverter._get_type_schema(args[0])
                 }
             return {"type": "array"}
+        
+        # Handle Enum types
+        if isinstance(field_type, type) and issubclass(field_type, Enum):
+            enum_values = [item.value for item in field_type]
+            # Determine the type of enum values
+            if enum_values:
+                first_val = enum_values[0]
+                if isinstance(first_val, str):
+                    base_type = "string"
+                elif isinstance(first_val, int):
+                    base_type = "integer"
+                elif isinstance(first_val, float):
+                    base_type = "number"
+                else:
+                    base_type = "string"
+            else:
+                base_type = "string"
+            
+            return {
+                "type": base_type,
+                "enum": enum_values
+            }
         
         # Handle basic types
         type_mapping = {
@@ -188,7 +211,7 @@ class ModelConverter:
             
             visited.add(model_cls)
             
-            # Collect nested classes first
+            # Collect nested classes and enums first
             if hasattr(model_cls, 'model_fields'):
                 for field_info in model_cls.model_fields.values():
                     nested_types = ModelConverter._extract_nested_types(field_info.annotation)
@@ -227,6 +250,10 @@ class ModelConverter:
                 if isinstance(arg, type):
                     nested.extend(ModelConverter._extract_nested_types(arg))
         
+        # Handle enum types
+        elif isinstance(field_type, type) and issubclass(field_type, Enum):
+            nested.append(field_type)
+        
         # Handle class types
         elif isinstance(field_type, type) and (hasattr(field_type, '__dataclass_fields__') or hasattr(field_type, 'model_fields')):
             nested.append(field_type)
@@ -239,6 +266,21 @@ class ModelConverter:
         Generate a single class definition string
         """
         lines = []
+        
+        # Handle Enum types
+        if isinstance(cls, type) and issubclass(cls, Enum):
+            # Determine enum base type
+            enum_bases = [base.__name__ for base in cls.__bases__ if base != Enum]
+            if enum_bases:
+                lines.append(f"class {cls.__name__}({', '.join(enum_bases)}, Enum):")
+            else:
+                lines.append(f"class {cls.__name__}(Enum):")
+            
+            # Add enum members
+            for member in cls:
+                lines.append(f"    {member.name} = {repr(member.value)}")
+            
+            return "\n".join(lines)
         
         # Determine base class
         if hasattr(cls, 'model_fields'):
@@ -303,6 +345,10 @@ class ModelConverter:
             if args:
                 return f"List[{ModelConverter._format_type_annotation(args[0])}]"
             return "List"
+        
+        # Handle Enum types
+        if isinstance(field_type, type) and issubclass(field_type, Enum):
+            return field_type.__name__
         
         # Handle class types
         if isinstance(field_type, type):
