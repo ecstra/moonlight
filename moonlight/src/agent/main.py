@@ -1,5 +1,5 @@
 import asyncio
-from typing import Type, Union, Optional, Any
+from typing import Type, Union, Optional, Any, Dict
 from textwrap import dedent
 from pydantic import BaseModel
 from dataclasses import is_dataclass, dataclass
@@ -53,7 +53,8 @@ class Agent:
         self._image_gen = image_gen
         
         # total tokens
-        self._total_tokens = 0
+        self._contextual_tokens = 0 # to count how many tokens are there in "history" right now
+        self._consumed_tokens = 0   # to count total consumption of tokens across all messages
         
         # History
         self._history = None
@@ -65,14 +66,17 @@ class Agent:
         # construct system role
         self._construct_sys_role(system_role)
         
-    def get_total_tokens(self) -> int: 
+    def get_total_tokens(self) -> Dict[str, int]: 
         """
         Returns the total number of tokens used by the agent during its operation.
 
         Returns:
-            int: The total count of tokens.
+            Dict[str, int]: The total count of tokens in current context and consumed.
         """
-        return self._total_tokens
+        return {
+            "context": self._contextual_tokens,
+            "consumed": self._consumed_tokens
+        }
     
     def get_history(self):
         """
@@ -189,8 +193,9 @@ class Agent:
     
     def clear(self):
         """
-        Clears the conversation history (except the system role).
+        Clears the agent. This includes context token count and history.
         """
+        self._contextual_tokens = 0
         self._history.clear_history()
         
     async def run(self, prompt: Content) -> Union[Completion, Any]:
@@ -239,7 +244,8 @@ class Agent:
             )
         )
         
-        self._total_tokens = response.total_tokens
+        self._contextual_tokens = response.total_tokens
+        self._consumed_tokens  += response.total_tokens
         
         if custom_output:
             if response.error:
