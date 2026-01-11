@@ -1,8 +1,8 @@
 * [ ] Add retry logic to GetCompletion
 * [ ] Add retry logic if response does not match output schema
 * [ ] Add Audio and Video output support
-* [ ] Add model checker against registry to prevent unknown models
 * [ ] Migrate RagSystem & WebSearch (possibly not needed)
+* [ ] Add checks to see if the endpoint supports the methods called in "src/provider/completion.py" and also check if they return the same type of data if they do. If not throw an "Unsupported" Error.
 * [ ] Add Sequential and Parallel Running Engines with data sharing between agents
 * [ ] Evaluate usefuleness of toolcalling and implement tool-calling ability
 * [ ] Same as above for MCP calling.
