@@ -116,7 +116,6 @@ class Agent:
             provider=self._provider,
             model=self._model
         ))
-        print(self._model_data)
         
         if not self._model_data["model_exists"]:
             raise AgentError(f"Model {self._model} does not exist in the given provider.")
@@ -206,7 +205,7 @@ class Agent:
                                     or a parsed object if an output schema is defined.
         """
         
-        if (len(prompt.images) > 0) and (not "image" in self._model_data["input_modalities"]):
+        if (len(prompt.images) > 0) and ("image" not in self._model_data["input_modalities"]):
             raise AgentError("This model does not support image inputs.")
         
         custom_output = True if self._output_schema else False

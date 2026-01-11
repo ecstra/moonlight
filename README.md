@@ -6,7 +6,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![PyPI version](https://img.shields.io/pypi/v/moonlight-ai.svg)](https://pypi.org/project/moonlight-ai/)
 
-Moonlight is a lightweight SDK for building AI agents with full control. It provides async stateful agents, multimodal input/output, structured responses via Pydantic/dataclass, and works with any OpenAI-compatible provider. No dependencies on OpenAI libraries, no hidden abstractions, no framework bloat.
+Moonlight is a lightweight SDK for building AI agents with full control. It provides async stateful agents, multimodal input/output (text, images, vision), image generation, structured responses via Pydantic/dataclass, and works with any OpenAI-compatible provider. No dependencies on OpenAI libraries, no hidden abstractions, no framework bloat.
 
 ## Installation
 
@@ -134,6 +134,39 @@ Images are automatically:
 - Converted to base64 data URIs
 - Validated and filtered
 
+### Image Generation
+
+Generate images directly from text prompts using multimodal models:
+
+```python
+image_agent = Agent(
+    provider=provider,
+    model="google/gemini-3-flash-preview",  # or other image-capable models
+    image_gen=True  # Enable image generation mode
+)
+
+response = asyncio.run(image_agent.run(
+    Content("Create a serene mountain landscape at sunset with a lake reflection")
+))
+
+print(response.content)
+# Output: [text description of generated image]
+
+if response.images:
+    for img_url in response.images:
+        print(f"Generated image: {img_url}")
+        # Output: Generated image: data:image/png;base64,...
+```
+
+The SDK automatically:
+
+- Validates model supports image output
+- Enables multimodal mode (`["text", "image"]`)
+- Returns base64-encoded images in response
+- Prevents using `image_gen` with `output_schema` (incompatible)
+
+**Note**: Image generation and structured output schemas are mutually exclusive.
+
 ### Conversation History
 
 Agents maintain stateful conversation history:
@@ -176,6 +209,46 @@ Provider(source="https://api.custom.com/v1", api="key")
 
 Supported providers: OpenAI, DeepSeek, Together, Groq, Google AI, HuggingFace, OpenRouter, or any custom OpenAI-compatible endpoint.
 
+### Model Validation
+
+Agents automatically validate model capabilities on initialization:
+
+```python
+agent = Agent(
+    provider=provider,
+    model="gpt-4o",               # Checks if model exists in given provider
+    max_completion_tokens=8192,  # Validates against model limits
+    image_gen=True               # Validates against model limits
+)
+# Automatically checks:
+# - Model exists in provider
+# - Context length and max_completion_tokens
+# - Input modalities (text, image, audio, video)
+# - Output modalities (text, image)
+# - Reasoning capability support
+```
+
+Validation prevents runtime errors by checking:
+
+- **Model existence**: Ensures the model is available from the provider
+- **Token limits**: Validates `max_completion_tokens` doesn't exceed model capacity
+- **Modality support**: Verifies model supports requested input/output types (images, video, etc.)
+- **Image generation**: Confirms model can generate images when `image_gen=True`
+
+Errors are raised immediately during agent initialization with clear messages:
+
+```python
+try:
+    agent = Agent(
+        provider=provider,
+        model="gpt-3",
+        image_gen=True
+    )
+except AgentError as e:
+    print(e)
+    # Output: This model does not support image generation
+```
+
 ### Token Tracking
 
 Agents track token usage automatically:
@@ -190,7 +263,7 @@ print(agent.get_total_tokens())
 
 ### Error Handling
 
-Detailed error messages from providers:
+Detailed error messages from providers with intelligent parsing:
 
 ```python
 response = asyncio.run(agent.run(Content("...")))
@@ -205,11 +278,17 @@ else:
 
 Handles:
 
-- Invalid credentials (401)
-- Rate limits (429)
-- Content moderation (403)
-- Parameter validation errors (400)
-- Provider-specific raw error parsing
+- **Invalid credentials (401)**: Expired OAuth tokens, invalid API keys
+- **Rate limits (429)**: Too many requests, retry guidance
+- **Content moderation (403)**: Specific reasons for flagged content
+- **Parameter errors (400)**: Detailed validation messages (e.g., "max_tokens exceeds limit")
+- **Insufficient credits (402)**: Clear payment/billing errors
+- **Timeout errors (408)**: Request took too long
+- **Provider errors (502)**: Model down or invalid response
+- **Routing errors (503)**: No provider meets requirements
+- **Provider-specific errors**: Parses nested JSON error structures
+
+Error messages include context from provider metadata when available, making debugging easier.
 
 ## Architecture
 
@@ -241,13 +320,15 @@ Moonlight is intentionally minimal:
 
 To stay lightweight, Moonlight does not include:
 
-- Multi-agent orchestration (for now) (build your own with asyncio)
+- Multi-agent orchestration (build your own with asyncio)
 - RAG systems or vector databases
 - Web scraping or search
-- Tool calling (planned)
+- Tool calling (in development)
 - Streaming responses
-- Built-in retry logic (planned)
-- Observability or logging (planned)
+- Built-in retry logic (in development)
+- Observability or logging (in development)
+- Audio/video output (in development)
+- MCP (Model Context Protocol) integration (in development)
 
 These are left to you or future extensions to keep the core minimal.
 
@@ -258,12 +339,15 @@ agent = Agent(
     provider=provider,
     model="gpt-4o",
     system_role="You are an expert analyst",
-    output_schema=MyModel,  # Optional structured output
+    output_schema=MyModel,   # Optional structured output
+    image_gen=False,         # Enable image generation (conflicts with output_schema)
     temperature=0.7,
     top_p=0.9,
+    top_k=40,
     max_completion_tokens=2048,
     frequency_penalty=0.5,
-    presence_penalty=0.5
+    presence_penalty=0.5,
+    repetition_penalty=1.1
 )
 
 # Access history
@@ -272,6 +356,15 @@ messages = agent.get_history()
 # Token usage
 tokens = agent.get_total_tokens()
 ```
+
+**Supported Parameters:**
+
+- `temperature`, `top_p`, `top_k`: Sampling parameters
+- `max_completion_tokens`, `max_output_tokens`: Token limits
+- `frequency_penalty`, `presence_penalty`, `repetition_penalty`: Repetition control
+- `tools`, `tool_choice`: Tool calling configuration (planned)
+- `plugins`: Provider-specific plugins
+- `reasoning`, `verbosity`: Control reasoning traces
 
 ## Building From Source
 
@@ -293,12 +386,15 @@ python -c "from moonlight import Agent; print('OK')"
 
 ## Roadmap
 
-- [ ] Retry logic for API calls and schema validation
-- [ ] Sequential and parallel agent execution engines
-- [ ] Tool calling support
-- [ ] Logging and Observability
+- [ ] Retry logic for API calls and schema validation failures
+- [ ] Audio and video output support
+- [ ] Endpoint capability detection (validate methods before calling)
+- [ ] Sequential and parallel agent execution engines with data sharing
+- [ ] Tool calling support (evaluating usefulness)
 - [ ] MCP (Model Context Protocol) integration
-- [ ] RAG and WebSearch (if needed)
+- [ ] Enhanced token counting (cache awareness, more accurate tracking)
+- [ ] Logging and observability framework
+- [ ] RAG and web search (evaluating necessity)
 
 ## License
 
