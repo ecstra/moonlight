@@ -17,7 +17,17 @@ class Completion:
     def __str__(self) -> str:
         if self.error:
             return f"CompletionError({self.error})"
-        return self.content if self.content is not None else ""
+        
+        content_preview = (self.content[:50] + "...") if self.content and len(self.content) > 50 else self.content
+        return (
+            f"{self.content if self.content is not None else ""}\n\n"
+            f"---\n\n"
+            f"Completion("
+            f"content={content_preview!r}, "
+            f"images={len(self.images) if self.images else 0}, "
+            f"error={self.error!r}, "
+            f"total_tokens={self.total_tokens})"
+        )
 
     def __repr__(self) -> str:
         content_preview = (self.content[:50] + "...") if self.content and len(self.content) > 50 else self.content

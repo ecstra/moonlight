@@ -205,7 +205,7 @@ class Agent:
                                     or a parsed object if an output schema is defined.
         """
         
-        if (len(prompt.images) > 0) and ("image" not in self._model_data["input_modalities"]):
+        if prompt.images and ("image" not in self._model_data["input_modalities"]):
             raise AgentError("This model does not support image inputs.")
         
         custom_output = True if self._output_schema else False
