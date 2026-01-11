@@ -1,7 +1,7 @@
 import httpx, json, re
 from dataclasses import dataclass
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from .main import Provider
 
 class GetCompletionError(Exception): pass
@@ -44,6 +44,7 @@ def _check_for_errors(request) -> str:
     
     try:
         error_response = request.json()
+        print(error_response)
         if "error" in error_response and isinstance(error_response["error"], dict):
             api_error = error_response["error"]
             if "message" in api_error:
@@ -104,6 +105,72 @@ def _check_for_errors(request) -> str:
             case 503: error_msg = "No available model provider meets your routing requirements"
     
     return error_msg
+
+async def CheckModel(provider, model: str) -> Dict[str, Any]:
+    if not provider:
+        raise GetCompletionError("LLM Provider must be given")
+
+    if not model:
+        raise GetCompletionError("Model must be provided")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.get(
+            url=f"{provider.get_source()}/models",
+            headers={
+                "Authorization": f"Bearer {provider.get_api()}",
+                "Content-Type": "application/json",
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+
+    # Build index: id -> model_info
+    index = {}
+    for m in data["data"]:
+        mid = m.get("id")
+        if mid:
+            index[mid] = m
+
+    if model not in index:
+        return {
+            "model_exists": False,
+            "context_length": None,
+            "max_completion_tokens": None,
+            "reasoning": False,
+            "input_modalities": [],
+            "output_modalities": [],
+        }
+
+    m = index[model]
+
+    arch = m.get("architecture", {}) or {}
+
+    input_modalities = arch.get("input_modalities", []) or []
+    output_modalities = arch.get("output_modalities", []) or []
+
+    # Prefer top_provider limits (actual routed limits)
+    top = m.get("top_provider") or {}
+
+    context_length = top.get("context_length") or m.get("context_length")
+    max_completion_tokens = top.get("max_completion_tokens")
+
+    # Heuristic for reasoning capability
+    pricing = m.get("pricing", {}) or {}
+    supported = m.get("supported_parameters", []) or []
+
+    reasoning = (
+        ("reasoning" in supported)
+        or (pricing.get("internal_reasoning", "0") != "0")
+    )
+
+    return {
+        "model_exists": True,
+        "context_length": context_length,
+        "max_completion_tokens": max_completion_tokens,
+        "reasoning": reasoning,
+        "input_modalities": input_modalities,
+        "output_modalities": output_modalities,
+    }
 
 async def GetCompletion(
     provider: Provider,

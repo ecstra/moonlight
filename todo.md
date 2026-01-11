@@ -1,7 +1,5 @@
 * [ ] Add retry logic to GetCompletion
 * [ ] Add retry logic if response does not match output schema
-* [ ] Add enum support to ModelConverter
-* [ ] Add modality checker
 * [ ] Add Audio and Video output support
 * [ ] Add model checker against registry to prevent unknown models
 * [ ] Migrate RagSystem & WebSearch (possibly not needed)

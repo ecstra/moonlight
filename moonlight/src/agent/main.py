@@ -1,3 +1,4 @@
+import asyncio
 from typing import Type, Union, Optional, Any
 from textwrap import dedent
 from pydantic import BaseModel
@@ -6,7 +7,7 @@ from dataclasses import is_dataclass, dataclass
 from .base import Content
 from .history import AgentHistory
 from ..helpers import ModelConverter
-from ..provider import Provider, GetCompletion, Completion
+from ..provider import Provider, GetCompletion, Completion, CheckModel
 
 class AgentError(Exception):
     pass
@@ -58,6 +59,7 @@ class Agent:
         self._history = None
         
         # Validate params
+        self._model_data = None
         self._validate()
         
         # construct system role
@@ -108,7 +110,36 @@ class Agent:
         
         if self._output_schema and (not is_dataclass(self._output_schema) and not hasattr(self._output_schema, 'model_fields')):
             raise AgentError("Output Schema must be either a DataClass or BaseModel.")
-    
+        
+        # Validate the model and it's params
+        self._model_data = asyncio.run(CheckModel(
+            provider=self._provider,
+            model=self._model
+        ))
+        print(self._model_data)
+        
+        if not self._model_data["model_exists"]:
+            raise AgentError(f"Model {self._model} does not exist in the given provider.")
+        
+        if self._image_gen and ("image" not in self._model_data["output_modalities"]):
+            raise AgentError("This model does not support image generation")
+        
+        if self._params.get("modalities"):
+            if self._model_data["output_modalities"]:
+                unsupported_modalities = set(self._params.get("modalities")) - set(self._model_data["output_modalities"])
+                if unsupported_modalities:
+                    raise AgentError(f"The following modalities are not supported by the model: {unsupported_modalities}")
+                
+        max_allowed_tokens =  self._model_data["max_completion_tokens"]
+        if max_allowed_tokens:
+            if self._params.get("max_completion_tokens"):
+                if self._params['max_completion_tokens'] > max_allowed_tokens:
+                    raise AgentError(f"Max Completion tokens {self._params['max_completion_tokens']} exceeds model limits of {max_allowed_tokens}")
+            
+            if self._params.get("max_tokens"):
+                if self._params["max_tokens"] > max_allowed_tokens:
+                    raise AgentError(f"Max Completion tokens {self._params['max_tokens']} exceeds model limits of {max_allowed_tokens}")
+            
     def _construct_sys_role(self, sys_role: str):
         """
         Constructs and updates the system role message, appending schema instructions if applicable.
@@ -174,6 +205,10 @@ class Agent:
             Union[Completion, Any]: A Completion object containing the response, 
                                     or a parsed object if an output schema is defined.
         """
+        
+        if (len(prompt.images) > 0) and (not "image" in self._model_data["input_modalities"]):
+            raise AgentError("This model does not support image inputs.")
+        
         custom_output = True if self._output_schema else False
         
         await self._history.add(
