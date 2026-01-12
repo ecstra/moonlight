@@ -397,7 +397,7 @@ async def GetCompletion(
             })
         )
         
-        request.raise_for_status()
+        # request.raise_for_status()
         
         if request.status_code != 200:
             return Completion(error=_check_for_errors(request))

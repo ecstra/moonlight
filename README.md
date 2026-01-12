@@ -77,7 +77,7 @@ class Analysis(BaseModel):
 
 sentiment_agent = Agent(
     provider=provider,
-    model="google/gemini-3-flash-preview",
+    model="qwen/qwen3-4b:free",
     output_schema=Analysis  # Automatic JSON mode + validation
 )
 
@@ -107,6 +107,164 @@ The SDK automatically:
 - Injects schema into system prompt
 - Validates and parses response into your model
 - Handles nested structures and optional fields
+
+### Tool Calling (Explicit, Schema-Driven)
+
+Moonlight does not let the model execute tools. Instead, the model produces a structured action or parameter object, and your code executes the function. This keeps all control flow in your program and works with any provider or model.
+
+#### Philosophy
+
+Moonlight follows a simple workflow:
+
+1. The agent produces structured parameters
+2. Your code executes the function
+3. Your code decides the next step
+
+#### Basic Example
+
+```python
+from pydantic import BaseModel
+from typing import Literal
+import asyncio
+
+# Define your tool's parameter schema
+class SearchParams(BaseModel):
+    query: str
+    max_results: int = 5
+    date_filter: str = "any"
+
+# Create agent with structured output
+tool_agent = Agent(
+    provider=provider,
+    model="qwen/qwen3-coder:free",
+    output_schema=SearchParams,
+    system_role="You help users search. Output only the search parameters needed."
+)
+
+# Get parameters from agent
+params = asyncio.run(tool_agent.run(
+    Content("Find recent papers about quantum computing, limit to 3 results")
+))
+
+print(params.query)
+# Output: "quantum computing papers 2024"
+
+print(params.max_results)
+# Output: 3
+
+# Execute the actual tool with the parameters
+results = search_papers(query=params.query, max_results=params.max_results)
+print(results)
+# Output: [{'title': 'Advances in Quantum...', 'authors': [...], ...}, ...]
+```
+
+#### Multi-Step Workflow with Explicit Control
+
+For complex workflows requiring multiple steps, compose agents explicitly:
+
+```python
+from enum import Enum
+from textwrap import dedent
+from typing import Optional
+
+class ActionType(str, Enum):
+    SEARCH = "search"
+    FETCH = "fetch"
+    SUMMARIZE = "summarize"
+    DONE = "done"
+
+class ActionPlan(BaseModel):
+    action: ActionType
+    reasoning: str
+    query: Optional[str] = None
+    url: Optional[str] = None
+    content: Optional[str] = None
+
+system_role = dedent("""
+You are a research assistant that plans actions step by step.
+
+Fields explanation:
+- action: The type of action to take (SEARCH, FETCH, SUMMARIZE, or DONE)
+- reasoning: Brief explanation of why you chose this action
+- query: Search query string (only fill when action=SEARCH)
+- url: Web URL to fetch (only fill when action=FETCH)
+- content: Text content to summarize (only fill when action=SUMMARIZE)
+
+For each response, choose ONE action and fill ONLY the relevant field:
+- If action=SEARCH: Fill 'query' with search terms. Leave url and content as None.
+- If action=FETCH: Fill 'url' with the web address. Leave query and content as None.
+- If action=SUMMARIZE: Fill 'content' with text to summarize. Leave query and url as None.
+- If action=DONE: Leave query, url, and content as None.
+
+Always fill 'reasoning' and 'action'. Only fill the one optional field relevant to your chosen action.
+""")
+
+planner = Agent(
+    provider=provider,
+    model="anthropic/claude-opus-4.5",
+    output_schema=ActionPlan,
+    system_role=system_role
+)
+
+# Explicit multi-step loop with full visibility and control
+question = "What are the latest breakthroughs in fusion energy?"
+context = {"question": question, "findings": []}
+
+for step in range(5):  # Maximum 5 steps
+    # Get next action from planner
+    plan = asyncio.run(planner.run(
+        Content(f"Question: {question}\n\nContext so far: {context}\n\nWhat should we do next?")
+    ))
+  
+    print(f"Step {step + 1}: {plan.action} - {plan.reasoning}")
+  
+    # Execute action based on plan
+    if plan.action == ActionType.SEARCH:
+        results = web_search(plan.query)
+        context["findings"].append({"type": "search", "query": plan.query, "results": results})
+  
+    elif plan.action == ActionType.FETCH:
+        content = fetch_url(plan.url)
+        context["findings"].append({"type": "fetch", "url": plan.url, "content": content})
+  
+    elif plan.action == ActionType.SUMMARIZE:
+        summary = summarize_text(plan.content)
+        context["summary"] = summary
+  
+    elif plan.action == ActionType.DONE:
+        print("Research complete")
+        break
+  
+    # Add custom guards and budgets
+    if len(context["findings"]) > 10:
+        print("Maximum findings reached, stopping")
+        break
+
+print(f"Final answer: {context.get('summary', 'No conclusion reached')}")
+```
+
+#### Why Not Implicit Tool Calling?
+
+Implicit systems hide control flow inside the LLM. Moonlight keeps it explicit:
+
+* Works with any model (no provider lock-in)
+* Debuggable (inspect every step)
+* Composable (chain agents and tools freely)
+* Controllable (add retries, guards, budgets)
+* Testable (mock tool outputs)
+
+**Comparison:**
+
+```python
+# Implicit: Hidden loop
+agent.run(tools=[search, fetch])
+
+# Explicit: Visible control
+params = agent.run(...)
+result = search(**params)
+```
+
+> Explicit control trades minor convenience for production-grade reliability, debuggability, and flexibility.
 
 ### Multimodal Input
 
@@ -144,7 +302,7 @@ import base64
 
 image_agent = Agent(
     provider=provider,
-    model="google/gemini-3-flash-preview",  # or other image-capable models
+    model="google/gemini-3-pro-preview",  # or other image-capable models
     image_gen=True  # Enable image generation mode
 )
 
@@ -195,7 +353,9 @@ The SDK automatically:
 Agents maintain stateful conversation history:
 
 ```python
-agent = Agent(provider=provider, model="gpt-5.2")
+# DeepSeek provider example
+deepseek_provider = Provider(source="deepseek", api="your-deepseek-key")
+agent = Agent(provider=deepseek_provider, model="deepseek-chat")
 
 # First turn
 asyncio.run(agent.run(Content("My name is Alice")))
@@ -239,7 +399,7 @@ Agents automatically validate model capabilities on initialization:
 ```python
 agent = Agent(
     provider=provider,
-    model="gpt-4o",              # Checks if model exists in given provider
+    model="qwen/qwen3-4b:free",  # Checks if model exists in given provider
     max_completion_tokens=8192,  # Validates against model limits
     image_gen=True               # Validates against model limits
 )
@@ -280,7 +440,7 @@ except AgentError as e:
 Agents track token usage automatically:
 
 ```python
-agent = Agent(provider=provider, model="gpt-4o")
+agent = Agent(provider=provider, model="anthropic/claude-opus-4.5")
 asyncio.run(agent.run(Content("Hello")))
 
 print(agent.get_total_tokens())
@@ -363,7 +523,7 @@ These are left to you or future extensions to keep the core minimal.
 ```python
 agent = Agent(
     provider=provider,
-    model="gpt-4o",
+    model="mistralai/devstral-2512:free",
     system_role="You are an expert analyst",
     output_schema=MyModel,   # Optional structured output
     image_gen=False,         # Enable image generation (conflicts with output_schema)
@@ -404,7 +564,7 @@ pip install build twine
 python -m build
 
 # Install locally
-pip install dist/moonlight_ai-0.2.0-py3-none-any.whl
+pip install dist/moonlight_ai-*.whl
 
 # Test
 python -c "from moonlight import Agent; print('OK')"
@@ -415,7 +575,6 @@ python -c "from moonlight import Agent; print('OK')"
 - [ ] Retry logic for API calls
 - [ ] Audio and video output support
 - [ ] Sequential and parallel agent execution engines with data sharing
-- [ ] Tool calling support (evaluating usefulness)
 - [ ] MCP (Model Context Protocol) integration
 - [ ] Logging and observability framework
 - [ ] RAG and web search (evaluating necessity)
