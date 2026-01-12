@@ -139,23 +139,46 @@ Images are automatically:
 Generate images directly from text prompts using multimodal models:
 
 ```python
+import asyncio
+import base64
+
 image_agent = Agent(
     provider=provider,
     model="google/gemini-3-flash-preview",  # or other image-capable models
     image_gen=True  # Enable image generation mode
 )
 
+# Run the image generation prompt
 response = asyncio.run(image_agent.run(
     Content("Create a serene mountain landscape at sunset with a lake reflection")
 ))
 
+# This prints the text description or caption returned by the model (if any)
 print(response.content)
-# Output: [text description of generated image]
+# Example output: "A calm mountain lake at sunset with orange and purple skies..."
 
+# If the model returned images, they will be in response.images as base64 data URLs
 if response.images:
-    for img_url in response.images:
-        print(f"Generated image: {img_url}")
-        # Output: Generated image: data:image/png;base64,...
+    for i, img_url in enumerate(response.images):
+
+        # This prints the raw base64 data URL (useful for debugging or logging)
+        print(f"Generated image (base64 data URL): {img_url}")
+
+        # Image is in "data:image/...;base64,XXXX" format.
+        # strip the header and keep only the base64 part
+        img_base64 = img_url.split(",", 1)[1]
+
+        # Decode base64 into raw image bytes
+        img_bytes = base64.b64decode(img_base64)
+
+        # Save the decoded image bytes to a PNG file on disk
+        out_path = f"generated_{i}.png"
+        with open(out_path, "wb") as f:
+            f.write(img_bytes)
+
+        # This prints where the image was saved on disk
+        print(f"Saved image to {out_path}")
+
 ```
 
 The SDK automatically:
@@ -216,11 +239,13 @@ Agents automatically validate model capabilities on initialization:
 ```python
 agent = Agent(
     provider=provider,
-    model="gpt-4o",               # Checks if model exists in given provider
+    model="gpt-4o",              # Checks if model exists in given provider
     max_completion_tokens=8192,  # Validates against model limits
     image_gen=True               # Validates against model limits
 )
+
 # Automatically checks:
+# - Endpoint compatibility
 # - Model exists in provider
 # - Context length and max_completion_tokens
 # - Input modalities (text, image, audio, video)
@@ -230,6 +255,7 @@ agent = Agent(
 
 Validation prevents runtime errors by checking:
 
+- **Endpoint Compatibility:** Checks whether the Provider source has the necessary routes to be compatible
 - **Model existence**: Ensures the model is available from the provider
 - **Token limits**: Validates `max_completion_tokens` doesn't exceed model capacity
 - **Modality support**: Verifies model supports requested input/output types (images, video, etc.)
@@ -241,7 +267,7 @@ Errors are raised immediately during agent initialization with clear messages:
 try:
     agent = Agent(
         provider=provider,
-        model="gpt-3",
+        model="qwen-4b",
         image_gen=True
     )
 except AgentError as e:
@@ -386,13 +412,11 @@ python -c "from moonlight import Agent; print('OK')"
 
 ## Roadmap
 
-- [ ] Retry logic for API calls and schema validation failures
+- [ ] Retry logic for API calls
 - [ ] Audio and video output support
-- [ ] Endpoint capability detection (validate methods before calling)
 - [ ] Sequential and parallel agent execution engines with data sharing
 - [ ] Tool calling support (evaluating usefulness)
 - [ ] MCP (Model Context Protocol) integration
-- [ ] Enhanced token counting (cache awareness, more accurate tracking)
 - [ ] Logging and observability framework
 - [ ] RAG and web search (evaluating necessity)
 

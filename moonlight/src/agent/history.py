@@ -72,7 +72,7 @@ class AgentHistory:
         self._history.append({"role": "system", "content": system_role})
     
     def get_history(self) -> List[Dict[str, Union[str, List[str]]]]: return self._history
-        
+
     async def add(
         self, 
         role: str, 
@@ -106,7 +106,6 @@ class AgentHistory:
             #             "url": "data:video/mp4;base64,{base64_video_data}"
             #         }
             #     }
-            # 
             
             message_content = []
             message_content.append({ "type": "text", "text": content.text })

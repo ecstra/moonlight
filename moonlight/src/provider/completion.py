@@ -204,7 +204,6 @@ async def CheckModel(provider, model: str) -> Dict[str, Any]:
         "output_modalities": output_modalities,
     }
 
-
 def _strip_tags(text: str, tags: List[str]) -> str:
     for tag in tags:
         # remove opening tags
