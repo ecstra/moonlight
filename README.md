@@ -509,12 +509,11 @@ To stay lightweight, Moonlight does not include:
 - Multi-agent orchestration (build your own with asyncio)
 - RAG systems or vector databases
 - Web scraping or search
-- Tool calling (in development)
 - Streaming responses
 - Built-in retry logic (in development)
 - Observability or logging (in development)
 - Audio/video output (in development)
-- MCP (Model Context Protocol) integration (in development)
+- MCP (Model Context Protocol) integration (in consideration)
 
 These are left to you or future extensions to keep the core minimal.
 
@@ -569,15 +568,6 @@ pip install dist/moonlight_ai-*.whl
 # Test
 python -c "from moonlight import Agent; print('OK')"
 ```
-
-## Roadmap
-
-- [ ] Retry logic for API calls
-- [ ] Audio and video output support
-- [ ] Sequential and parallel agent execution engines with data sharing
-- [ ] MCP (Model Context Protocol) integration
-- [ ] Logging and observability framework
-- [ ] RAG and web search (evaluating necessity)
 
 ## License
 
