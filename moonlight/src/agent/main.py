@@ -1,4 +1,3 @@
-import asyncio
 from typing import Type, Union, Optional, Any, Dict
 from textwrap import dedent
 from pydantic import BaseModel
@@ -168,12 +167,18 @@ class Agent:
         if self._output_schema and (not is_dataclass(self._output_schema) and not hasattr(self._output_schema, 'model_fields')):
             raise AgentError("Output Schema must be either a DataClass or BaseModel.")
         
+    async def _ensure_initialized(self):
+        # Lazy init...
+        # Just check before running
+        # Run is async anyways, so no need for a model factory
+        if self._model_data is not None: return
+        
         # Validate the model and it's params
         # using the actual data gotten from the provider
-        self._model_data = asyncio.run(CheckModel(
+        self._model_data = await CheckModel(
             provider=self._provider,
             model=self._model
-        ))
+        )
         
         if not self._model_data["model_exists"]:
             raise AgentError(f"Model {self._model} does not exist in the given provider.")
@@ -271,6 +276,9 @@ class Agent:
                                     or a parsed object if an output schema is defined.
         """
         
+        # Lazy init. Fill up _model_data if not already filled and perform a check
+        await self._ensure_initialized()
+        
         # TODO: Evaluate whether this "run" will grow. 
         # If yes, then perhaps put it as a function in it's own file
         # or folder. Then figure out data passing between agents.
@@ -338,8 +346,11 @@ class Agent:
         #    eg: 1024 + (1024 + 128) + (1024 + 128 + 2048) ... so on
         #    where 1024 is the tokens for first response, 
         #    128 for second (+1024 input), 2048 for the third (+1024 + 128 input)
-        self._contextual_tokens = response.total_tokens
-        self._consumed_tokens  += response.total_tokens
+        # Note: Can't add None to int D:
+        
+        if response.total_tokens:
+            self._contextual_tokens = response.total_tokens
+            self._consumed_tokens  += response.total_tokens
         
         # Check if agent has an output to follow
         # If we can't follow that output, throw an error
@@ -353,7 +364,7 @@ class Agent:
             try:
                 return ModelConverter.json_to_model(self._output_schema, response.content)
             except:
-                pass    
+                pass
     
         return response
 
