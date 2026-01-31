@@ -1,4 +1,4 @@
-__version__ = "0.2.6"
+__version__ = "0.2.7"
 __author__ = "ecstra"
 __description__ = "Lightweight AI Agents SDK for building intelligent automation systems"
 

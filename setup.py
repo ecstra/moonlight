@@ -25,7 +25,7 @@ def read_requirements():
 
 setup(
     name="moonlight-ai",
-    version="0.2.6",
+    version="0.2.7",
     author="ecstra",
     author_email="themythbustertmb@gmail.com",
     description="Lightweight AI Agents SDK for building intelligent automation systems",

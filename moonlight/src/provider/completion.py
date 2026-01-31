@@ -215,29 +215,36 @@ def _strip_tags(text: str, tags: List[str]) -> str:
     return text
 
 def _check_for_errors(request) -> str:
-    error_msg = f"Unknown Error ({request.status_code})"
+    status_code = request.status_code
+    error_msg = None
+    provider_name = None
     
     try:
         error_response = request.json()
+        
         if "error" in error_response and isinstance(error_response["error"], dict):
             api_error = error_response["error"]
-            if "message" in api_error:
-                error_msg = api_error["message"]
             
-            if "metadata" in api_error:
+            # Get provider name if available
+            if "metadata" in api_error and isinstance(api_error["metadata"], dict):
+                provider_name = api_error["metadata"].get("provider_name")
+            
+            # Handle metadata first for more specific errors
+            if "metadata" in api_error and isinstance(api_error["metadata"], dict):
                 metadata = api_error["metadata"]
                 
                 # Handle moderation errors (reasons and flagged content)
-                if request.status_code == 403 and "reasons" in metadata:
+                if status_code == 403 and "reasons" in metadata:
                     reasons = ", ".join(metadata["reasons"])
                     error_msg = f"Content flagged for: {reasons}"
                 
-                # Handle provider specifc raw errors (often nested JSON strings)
+                # Handle provider specific raw errors
                 elif "raw" in metadata:
-                    try:
-                        raw_data = metadata["raw"]
-                        if isinstance(raw_data, str):
-                            # Parse the raw error string (e.g. '{"details": "...", "error": "..."}')
+                    raw_data = metadata["raw"]
+                    
+                    if isinstance(raw_data, str):
+                        # First try to parse as JSON (nested error structures)
+                        try:
                             parsed_raw = json.loads(raw_data)
                             
                             if isinstance(parsed_raw, dict):
@@ -260,15 +267,22 @@ def _check_for_errors(request) -> str:
                                     error_msg = inner_msg
                                 elif outer_msg:
                                     error_msg = str(outer_msg)
-                    except Exception:
-                        pass # Keep the original or basic error message if parsing fails
+                        except json.JSONDecodeError:
+                            # Raw is a plain string error message - use it directly
+                            error_msg = raw_data
+            
+            # Fallback to top-level message if no specific error was extracted
+            if not error_msg and "message" in api_error:
+                error_msg = api_error["message"]
 
+    except json.JSONDecodeError:
+        pass  # Response body is not JSON
     except Exception:
-        pass # Failed to parse JSON or unexpected structure
-
-
-    if error_msg.startswith("Unknown Error"):
-        match request.status_code:
+        pass  # Unexpected structure
+    
+    # Fallback to status code based messages if no specific error found
+    if not error_msg:
+        match status_code:
             case 400: error_msg = "Bad Request (invalid or missing params, CORS)"
             case 401: error_msg = "Invalid credentials (expired OAuth, disabled/invalid API key)"
             case 402: error_msg = "Insufficient credits - add more credits and retry"
@@ -278,8 +292,14 @@ def _check_for_errors(request) -> str:
             case 429: error_msg = "Rate limited - too many requests"
             case 502: error_msg = "Model is down or returned invalid response"
             case 503: error_msg = "No available model provider meets your routing requirements"
+            case _: error_msg = "Unknown error"
     
-    return error_msg
+    # Build final error message with status code and optional provider
+    prefix = f"[{status_code}]"
+    if provider_name:
+        prefix += f" [{provider_name}]"
+    
+    return f"{prefix} {error_msg}"
 
 async def GetCompletion(
     provider: Provider,
