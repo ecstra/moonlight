@@ -189,7 +189,9 @@ class Agent:
         
         # Modalities Check
         # Can the model handle image input/output?
-        if self._image_gen and ("image" not in self._model_info.output_modalities):
+        # Empty modalities = provider didn't report them (minimal /models
+        # endpoints like OpenAI/DeepSeek) -> unknown, so don't block.
+        if self._image_gen and self._model_info.output_modalities and ("image" not in self._model_info.output_modalities):
             raise AgentError("This model does not support image generation")
         
         # Max allowed tokens check (sometimes it's null)                
@@ -290,7 +292,8 @@ class Agent:
         # And then expand to sequential and parallel running.
         
         # Check if prompt has images, but images should not be provided.
-        if prompt.images and ("image" not in self._model_info.input_modalities):
+        # Skip when modalities are unknown (empty) -> let the provider decide.
+        if prompt.images and self._model_info.input_modalities and ("image" not in self._model_info.input_modalities):
             raise AgentError("This model does not support image inputs.")
         
         # Custom Output is set to true if output schema is provider

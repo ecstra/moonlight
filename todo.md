@@ -1,7 +1,7 @@
 # ToDo
 
-* [ ] Add retry logic to GetCompletion
-* [ ] Add Anthropic API support.
+* [x] Add retry logic to GetCompletion
+* [ ] Add Anthropic compat.
 * [ ] Context length checker and auto history pruner/summarizer
 * [ ] Add retry logic if response does not match output schema
 * [ ] Add Audio and Video output support
