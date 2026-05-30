@@ -4,13 +4,15 @@ __description__ = "Lightweight AI Agents SDK for building intelligent automation
 
 # Core Agent Architecture
 from .src.agent import Agent, Content
-from .src.provider import Provider
+from .src.provider import Provider, EndpointType, ModelInfo
 
 __all__ = [
     # Core Components
     "Agent",
     "Content",
     "Provider",
+    "EndpointType",
+    "ModelInfo",
 
     # Metadata
     "__version__",
