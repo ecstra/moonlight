@@ -1,9 +1,14 @@
 import asyncio, httpx, base64, mimetypes
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Any
 
 from .base import Content
+
+# A message is {"role": str, "content": str | [content-part dicts]}, where a
+# multimodal part is e.g. {"type": "text", "text": ...} or
+# {"type": "image_url", "image_url": {"url": ...}}.
+type TypeAgentHistory = List[Dict[str, Union[str, List[Dict[str, Any]]]]]
 
 async def process_images(images):
     """
@@ -32,7 +37,7 @@ async def process_images(images):
                         mime = r.headers.get("content-type", "application/octet-stream").split(";")[0]
                         b64 = base64.b64encode(r.content).decode("ascii")
                         return f"data:{mime};base64,{b64}"
-                    except Exception as e:
+                    except Exception as _:
                         return None
             except:
                 pass
@@ -54,7 +59,7 @@ async def process_images(images):
                     
                     b64 = base64.b64encode(content).decode("ascii")
                     return f"data:{mime};base64,{b64}"
-            except Exception as e:
+            except Exception as _:
                 return None
             
             # Skip invalid inputs
@@ -67,11 +72,11 @@ class AgentHistory:
         self,
         system_role: str
     ):
-        self._history: List[Dict[str, Union[str, List[str]]]] = []
+        self._history: TypeAgentHistory = []
         self._system_role = system_role
         self._history.append({"role": "system", "content": system_role})
     
-    def get_history(self) -> List[Dict[str, Union[str, List[str]]]]: return self._history
+    def get_history(self) -> TypeAgentHistory: return self._history
 
     async def add(
         self, 
@@ -132,6 +137,11 @@ class AgentHistory:
     def clear_history(self):
         self._history = []
         self.update_system_role(self._system_role)
+
+    def replace_history(self, messages):
+        # Keep the current system message, replace everything after it.
+        system = self._history[0] if (self._history and self._history[0].get("role") == "system") else { "role": "system", "content": self._system_role }
+        self._history = [system] + list(messages)
 
     def __str__(self) -> str:
         return str(self._history)

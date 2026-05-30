@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from dataclasses import is_dataclass, dataclass
 
 from .base import Content
-from .history import AgentHistory
+from .history import AgentHistory, TypeAgentHistory
 from ..helpers import ModelConverter
 from ..provider import (
     Provider,
@@ -17,46 +17,46 @@ class AgentError(Exception):
 
 class Agent:
     """
-    A high-level interface for interacting with various AI language models through different providers.
+    A high-level, async interface for talking to any supported model behind a Provider.
 
-    The Agent class provides a unified API for communicating with AI models while handling
-    conversation history management, system role configuration, structured output validation,
-    token tracking, and multi-modal support (text and images).
+    Args:
+        provider (Provider): Configured LLM provider (endpoint, API key, wire format).
+        model (str): Model identifier to use (e.g. "gpt-4o", "claude-opus-4-6").
+        output_schema (Optional[BaseModel | dataclass]): If set, run() returns a validated
+            instance of this schema instead of a Completion. Mutually exclusive with image_gen.
+        persistence (bool): If True (default), conversation history is kept across run() calls;
+            if False, history is cleared after each run (stateless / single-turn).
+        system_role (str): System prompt for the agent. Defaults to a generic assistant.
+        image_gen (bool): If True, request image output from an image-capable model.
+            Mutually exclusive with output_schema.
+        schema_retries (int): When output_schema parsing fails, how many times to show the model
+            its error and ask it to fix the response before falling back (default 2).
+        summarize_threshold (float): Fraction (0-1) of the model's context length at which older
+            turns are auto-summarized into the system role. Set to 0 to disable (default 0.85).
+        keep_recent (int): Most recent messages kept verbatim when summarizing (default 2).
+        **kwargs: Sampling/config params forwarded to the provider (temperature, top_p, top_k,
+            max_completion_tokens, frequency_penalty, presence_penalty, etc.).
 
-    Key Features:
-        - Multi-provider support: Works with various AI providers (OpenAI, Anthropic, etc.)
-        - Conversation history: Automatically manages message history for context-aware conversations
-        - Structured output: Validates and parses responses using Pydantic models or dataclasses
-        - Token tracking: Monitors both contextual and consumed tokens across interactions
-        - Image generation: Supports models with image generation capabilities
-        - Persistance: Optional for single-turn interactions without history persistence
-        - Flexible configuration: Customizable parameters like temperature, top_p, top_k, etc.
-
-    Attributes:
-        _model (str): The identifier of the AI model to be used (e.g., 'gpt-4', 'claude-3').
-        _provider (Provider): The provider instance handling the API calls.
-        _output_schema (Optional[Union[Type[BaseModel], Type[dataclass]]]):
-            Optional schema for structured output validation and parsing.
-        _params (dict): Additional parameters for model configuration (temperature, top_p, etc.).
-        _image_gen (bool): Whether the agent is configured for image generation.
-        _persistence (bool): If False, conversation history is cleared after each interaction.
-        _schema_retries (int): Self-correction attempts when structured output fails validation.
-        _contextual_tokens (int): Number of tokens currently in the conversation context.
-        _consumed_tokens (int): Total tokens consumed across all interactions.
-        _history (AgentHistory): Manages the conversation history and system role.
-        _model_info (ModelInfo): Validated model metadata including capabilities and limitations.
+    Automatically handles:
+        - Model validation on first run (existence, modalities, token limits).
+        - Conversation history and system-role management.
+        - Structured output: JSON mode, schema injection, validation, and self-correction retries.
+        - Multimodal image input and image generation.
+        - Auto-summarization of old turns as the context window fills.
+        - Token tracking (current context and cumulative consumed).
+        - Transient-failure retries and provider error reporting.
 
     Example:
         ```python
         from moonlight import Agent, Provider, Content
         from pydantic import BaseModel
 
-        provider = Provider(source="openai", api="your-api-key")
+        provider = Provider(source="anthropic", api="your-api-key")
 
         # Basic usage
         agent = Agent(
             provider=provider,
-            model="gpt-4",
+            model="claude-opus-4.8",
             system_role="You are a helpful coding assistant."
         )
         response = await agent.run(Content(text="Explain recursion"))
@@ -68,16 +68,13 @@ class Agent:
 
         agent = Agent(
             provider=provider,
-            model="gpt-4",
+            model="claude-opus-4.8",
             output_schema=Response,
             temperature=0.7
         )
         result = await agent.run(Content(text="What is Python?"))
         print(result.answer, result.confidence)
         ```
-
-    Raises:
-        AgentError: If invalid configuration is provided or model constraints are violated.
     """
     def __init__(
         self,
@@ -88,6 +85,8 @@ class Agent:
         system_role: str = "",
         image_gen: bool = False,
         schema_retries: int = 2,
+        summarize_threshold: float = 0.85,
+        keep_recent: int = 2,
         **kwargs
     ):
         # Agent params
@@ -102,6 +101,16 @@ class Agent:
         # validation (the model is shown the error and asked to fix it) before
         # falling back to the raw response.
         self._schema_retries = schema_retries
+
+        # Auto-summarization: once the conversation reaches summarize_threshold of
+        # the model's context length, the oldest turns are folded into a running
+        # summary (kept in the system role) and dropped, while keep_recent of the
+        # most recent messages stay verbatim. Only engages when the provider
+        # reports a context length; set summarize_threshold to 0 to disable.
+        self._summarize_threshold = summarize_threshold
+        self._keep_recent = keep_recent
+        self._summary = ""            # running summary of folded-out turns
+        self._base_system_role = ""   # system role without the summary section
 
         # total tokens
         self._contextual_tokens = 0 # to count how many tokens are there in "history" right now
@@ -184,6 +193,13 @@ class Agent:
         if not isinstance(self._schema_retries, int) or self._schema_retries < 0:
             raise AgentError("schema_retries must be a non-negative integer")
 
+        # Auto-summarization config
+        if not isinstance(self._summarize_threshold, (int, float)) or not (0 <= self._summarize_threshold <= 1):
+            raise AgentError("summarize_threshold must be a number between 0 and 1")
+
+        if not isinstance(self._keep_recent, int) or self._keep_recent < 0:
+            raise AgentError("keep_recent must be a non-negative integer")
+
     async def _ensure_initialized(self):
         # Lazy init...
         # Just check before running
@@ -219,11 +235,10 @@ class Agent:
                     if self._params["max_tokens"] > max_allowed_tokens:
                         raise AgentError(f"Max Completion tokens {self._params['max_tokens']} exceeds model limits of {max_allowed_tokens}")
 
-        # TODO: Get the max context length and pass it to history if persistance is enabled
-        # Then in history auto cleanup the old messages if it exceeds context length * 0.8
-        # or summarize all messages using the same agent and add it to system role
-
-    def _construct_sys_role(self, sys_role: str):
+    def _construct_sys_role(
+        self,
+        sys_role: str
+    ):
         """
         Constructs and updates the system role message, appending schema instructions if applicable.
 
@@ -254,16 +269,30 @@ class Agent:
             ```
             {ModelConverter.model_to_string(self._output_schema)}
             ```
-
             """)
 
-        # Update the system role if it already exists.
-        # But if it's the first time initializing agent, then
-        # create the history
+        # Store the base system role (without any summary section) and apply it.
+        self._base_system_role = sys_role
+        self._apply_system_role()
+
+    def _apply_system_role(self):
+        # Effective system role = base instructions + the running summary (if any).
+        effective = self._base_system_role
+        if self._summary:
+            effective += dedent(f"""
+
+            ---
+
+            ## Summary of earlier conversation
+
+            {self._summary}
+            """)
+
+        # Update the system role if history exists, otherwise create it (first init).
         if self._history:
-            self._history.update_system_role(sys_role)
+            self._history.update_system_role(effective)
         else:
-            self._history = AgentHistory(sys_role)
+            self._history = AgentHistory(effective)
 
     def update_system_role(
         self,
@@ -284,14 +313,20 @@ class Agent:
         self._contextual_tokens = 0
         self._history.clear_history()
 
-    def _account_tokens(self, response: Completion):
-        # Context = tokens in the current history (the last call); consumed =
-        # cumulative total across every call this agent makes, retries included.
+    def _account_tokens(
+        self, 
+        response: Completion
+    ):
+        # Context = tokens in the current history (the last call)
+        # consumed = cumulative total across every call this agent makes, retries included.
         if response.total_tokens:
             self._contextual_tokens = response.total_tokens
             self._consumed_tokens  += response.total_tokens
 
-    async def _complete(self, optional: dict) -> Completion:
+    async def _complete(
+        self,
+        optional: dict
+    ) -> Completion:
         # One provider call over the current history, with token accounting.
         response = await GetCompletion(
             provider=self._provider,
@@ -303,29 +338,156 @@ class Agent:
         self._account_tokens(response)
         return response
 
-    def _coerce_output(self, content):
-        # Parse content into the output schema.
-        # Returns (instance, None) on success or (None, error_message) on failure.
+    def _serialize_messages(
+        self, 
+        messages: TypeAgentHistory
+    ) -> str:
+        """
+        Flatten conversation messages into a plain-text transcript for the summarizer.
+
+        Multimodal messages (content is a list of parts) keep their text and note
+        each image as "[image]"; plain-text messages are used as-is.
+
+        Args:
+            messages (TypeAgentHistory): The messages to serialize.
+
+        Returns:
+            str: One "role: content" line per message, joined by newlines.
+        """
+        lines = []
+        for m in messages:
+            role = m.get("role", "?")
+            content = m.get("content", "")
+            if isinstance(content, list):
+                parts = []
+                for p in content:
+                    if not isinstance(p, dict):
+                        continue
+                    if p.get("type") == "text":
+                        parts.append(p.get("text", ""))
+                    elif p.get("type") == "image_url":
+                        parts.append("[image]")
+                content = " ".join(parts)
+            lines.append(f"{role}: {content}")
+        return "\n".join(lines)
+
+    async def _try_summarize(self):
+        """
+        Compact the conversation if it is nearing the model's context limit.
+
+        Delegates to _compact_history once contextual token usage reaches
+        summarize_threshold of the model's context length. No-op when
+        summarization is disabled (threshold of 0) or the model is not
+        compactable (no known context length), leaving history untouched
+        (fail open).
+        """
+        
+        if not self._summarize_threshold or not self._model_info.compactable:
+            return
+        
+        limit = self._model_info.context_length
+        
+        if self._contextual_tokens < limit * self._summarize_threshold:
+            return
+        
+        await self._compact_history()
+
+    async def _compact_history(self):
+        """
+        Fold the oldest turns into the running summary and drop them.
+
+        Summarizes everything except the system message and the most recent
+        keep_recent messages (the boundary is nudged back so the kept slice
+        starts on a user turn, which Anthropic requires). The summary is produced
+        by a plain side-call to the same model, stored in self._summary, and
+        injected into the system role; the folded turns are then removed while the
+        recent turns are kept verbatim.
+
+        Best effort: if the summary call errors or returns nothing, the history is
+        left unchanged. The side-call's tokens count toward consumed totals but
+        not the live context size.
+        """
+        history = self._history.get_history()
+
+        # history[0] is the system message
+        # only later turns are foldable.
+        convo = history[1:]
+        if len(convo) <= self._keep_recent:
+            return
+
+        # Keep the most recent messages verbatim. Nudge the boundary back so the
+        # kept slice starts on a user turn (Anthropic needs user-first / strict
+        # alternation; harmless for OpenAI-compatible providers).
+        cut = len(convo) - self._keep_recent
+        while 0 < cut < len(convo) and convo[cut].get("role") != "user":
+            cut -= 1
+        if cut <= 0:
+            return  # no clean boundary -> skip this round
+
+        old, recent = convo[:cut], convo[cut:]
+
+        transcript = self._serialize_messages(old)
+        if self._summary:
+            # dedent the template (placeholders only), then fill it in -- dedent
+            # on an f-string would mis-handle the multi-line interpolated values.
+            instruction = dedent("""
+                Existing summary:
+                {summary}
+
+                New messages to fold in:
+                {transcript}
+
+                Return a single updated summary.
+            """).strip().format(summary=self._summary, transcript=transcript)
+        else:
+            instruction = f"Summarize this conversation:\n\n{transcript}"
+
+        # Plain text side-call: no schema, no response_format.
+        summary = await GetCompletion(
+            provider=self._provider,
+            model=self._model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (dedent(f"""
+                        You compress conversations. Produce a concise summary that
+                        preserves key facts, decisions, names, numbers, and open
+                        questions. Be faithful and terse; output only the summary.
+                    """).strip()),
+                },
+                {"role": "user", "content": instruction},
+            ],
+        )
+
+        # Best effort: leave history untouched if the summary call fails.
+        if summary.error or not summary.content:
+            return
+
+        # The side-call consumes tokens (counted) but isn't the live context size.
+        if summary.total_tokens:
+            self._consumed_tokens += summary.total_tokens
+
+        self._summary = summary.content.strip()
+        self._apply_system_role()              # refresh system role with the new summary
+        self._history.replace_history(recent)  # drop folded turns, keep recent verbatim
+
+    def _coerce_output(
+        self, 
+        content: str
+    ):
+        """
+        Parse content into the output schema.
+        Returns (instance, None) on success or (None, error_message) on failure.
+        """
         try:
             return ModelConverter.json_to_model(self._output_schema, content), None
         except Exception as e:
             return None, str(e)
 
-    @staticmethod
-    def _schema_fix_prompt(error: str) -> str:
-        # Correction message fed back to the model as a user turn.
-        return dedent(f"""
-        Your previous response could not be parsed into the required schema.
-
-        Error:
-        {error}
-
-        Generate a proper response that fixes all issues and strictly matches the
-        required JSON schema from the system instructions. Output only valid JSON,
-        with no extra commentary or code fences.
-        """).strip()
-
-    async def run(self, prompt: Content) -> Union[Completion, Any]:
+    async def run(
+        self, 
+        prompt: Content
+    ) -> Union[Completion, Any]:
         """
         Executes the agent with a given prompt, handling history and optional schema parsing.
 
@@ -337,12 +499,14 @@ class Agent:
             prompt (Content): The user input content.
 
         Returns:
-            Union[Completion, Any]: A Completion object containing the response,
-                                    or a parsed object if an output schema is defined.
+            Union[Completion, Any]: A Completion object containing the response, or a parsed object if an output schema is defined.
         """
 
         # Lazy init. Fill up _model_info if not already filled and perform a check
         await self._ensure_initialized()
+
+        # Compact history into a running summary if near the context limit.
+        await self._try_summarize()
 
         # Check if prompt has images, but images should not be provided.
         # Skip when modalities are unknown (empty) -> let the provider decide.
@@ -387,7 +551,18 @@ class Agent:
                 )
                 await self._history.add(
                     role="user",
-                    content=Content(text=self._schema_fix_prompt(err))
+                    content=Content(
+                        text=dedent(f"""
+                        Your previous response could not be parsed into the required schema.
+
+                        Error:
+                        {err}
+
+                        Generate a proper response that fixes all issues and strictly matches the
+                        required JSON schema from the system instructions. Output only valid JSON,
+                        with no extra commentary or code fences.
+                        """).strip()
+                    )
                 )
 
                 response = await self._complete(optional)

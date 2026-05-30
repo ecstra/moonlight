@@ -29,8 +29,12 @@ open (does not block on capabilities it could not determine).
 # PART 1 -- /models  (CheckModel -> ModelInfo)
 ################################################################################
 
-ModelInfo(model_exists, context_length, max_completion_tokens,
+ModelInfo(model_exists, context_length, compactable, max_completion_tokens,
           reasoning, input_modalities, output_modalities)
+
+`compactable` is derived, not read from the response: it is (context_length is
+not None) -- i.e. whether the agent can measure context fill to decide when to
+auto-summarize. Minimal providers (no context_length) are not compactable.
 
 All responses wrap models in a top-level "data" array. Anthropic also adds
 cursor pagination (first_id / last_id / has_more).

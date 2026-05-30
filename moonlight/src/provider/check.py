@@ -10,6 +10,7 @@ class CheckModelError(Exception): pass
 class ModelInfo:
     model_exists: bool
     context_length: Optional[int]
+    compactable: bool
     max_completion_tokens: Optional[int]
     reasoning: bool
     input_modalities: List[str]
@@ -20,6 +21,7 @@ class ModelInfo:
         return ModelInfo(
             model_exists=False,
             context_length=None,
+            compactable=False,
             max_completion_tokens=None,
             reasoning=False,
             input_modalities=[],
@@ -34,6 +36,7 @@ class ModelInfo:
         outputs = ", ".join(self.output_modalities) if self.output_modalities else "none"
         return (
             f"Context Length: {self.context_length}\n"
+            f"Compactable: {self.compactable}\n"
             f"Max Completion Tokens: {self.max_completion_tokens}\n"
             f"Reasoning: {self.reasoning}\n"
             f"Modalities: {inputs} -> {outputs}\n\n"
@@ -46,6 +49,7 @@ class ModelInfo:
             f"ModelInfo("
             f"model_exists={self.model_exists}, "
             f"context_length={self.context_length}, "
+            f"compactable={self.compactable}, "
             f"max_completion_tokens={self.max_completion_tokens}, "
             f"reasoning={self.reasoning}, "
             f"input_modalities={self.input_modalities}, "
@@ -86,6 +90,7 @@ def _parse_openai_compatible(m: dict) -> ModelInfo:
     return ModelInfo(
         model_exists=True,
         context_length=context_length,
+        compactable=context_length is not None,
         max_completion_tokens=max_completion_tokens,
         reasoning=reasoning,
         input_modalities=arch.get("input_modalities", []) or [],
@@ -117,9 +122,11 @@ def _parse_anthropic(m: dict) -> ModelInfo:
         input_modalities = []
         output_modalities = []
 
+    context_length = m.get("max_input_tokens") or None
     return ModelInfo(
         model_exists=True,
-        context_length=m.get("max_input_tokens") or None,
+        context_length=context_length,
+        compactable=context_length is not None,
         max_completion_tokens=m.get("max_tokens") or None,
         reasoning=supported("thinking"),
         input_modalities=input_modalities,

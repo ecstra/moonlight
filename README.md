@@ -4,7 +4,7 @@
 
 > **Minimal async AI agent framework with zero bloat**
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![PyPI version](https://img.shields.io/pypi/v/moonlight-ai.svg)](https://pypi.org/project/moonlight-ai/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/moonlight-ai?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/moonlight-ai)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![PyPI version](https://img.shields.io/pypi/v/moonlight-ai.svg)](https://pypi.org/project/moonlight-ai/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/moonlight-ai?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/moonlight-ai)
 
 > [!IMPORTANT]
 > **Status: sunset as of `0.3.0`.** Moonlight isn't actively maintained anymore, and `0.3.0` is the last planned release for a while.

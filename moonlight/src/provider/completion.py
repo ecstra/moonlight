@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from .main import Provider, EndpointType, ANTHROPIC_VERSION
 
-RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
+RETRYABLE_STATUS = { 408, 429, 500, 502, 503, 504 }
 
 class GetCompletionError(Exception): pass
 
