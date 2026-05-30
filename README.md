@@ -6,13 +6,22 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![PyPI version](https://img.shields.io/pypi/v/moonlight-ai.svg)](https://pypi.org/project/moonlight-ai/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/moonlight-ai?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/moonlight-ai)
 
-Moonlight is a lightweight SDK for building AI agents with full control. It provides async stateful agents, multimodal input/output (text, images, vision), image generation, structured responses via Pydantic/dataclass, and works with any OpenAI-compatible provider. No dependencies on OpenAI libraries, no hidden abstractions, no framework bloat.
+> [!IMPORTANT]
+> **Status: sunset as of `0.3.0`.** Moonlight isn't actively maintained anymore, and `0.3.0` is the last planned release for a while.
+>
+> When I started this, a tiny provider-agnostic agent layer was genuinely useful. It's less so now. The big providers (Anthropic, OpenAI, and the rest) ship their own agent SDKs that are more capable and far better supported than anything I'd keep up with on my own.
+>
+> So Moonlight is a personal research bed now: a small, readable codebase I use to prototype ideas about how agents get built. It's still MIT-licensed and still works, so fork it, learn from it, or build on it.
+
+Moonlight is a lightweight SDK for building AI agents with full control. You get async stateful agents, multimodal input/output (text, images, vision), image generation, structured responses via Pydantic or dataclasses, automatic model validation, and built-in retries. It works with any OpenAI-compatible provider and with Anthropic. No vendor SDKs, no hidden abstractions, no framework bloat.
 
 ## Installation
 
 ```bash
-uv pip install moonlight-ai
+pip install moonlight-ai
 ```
+
+> Works with `uv` too: `uv pip install moonlight-ai`.
 
 ## Quick Start
 
@@ -22,7 +31,7 @@ from moonlight import Provider, Agent, Content
 
 # Configure provider
 provider = Provider(
-    source="openrouter",  # or "openai", "deepseek", custom URL
+    source="openrouter",  # or "openai", "deepseek", "anthropic", a custom URL
     api="your-api-key"
 )
 
@@ -374,23 +383,26 @@ agent.update_system_role("You are now a pirate")
 
 ### Provider Support
 
-Works with any OpenAI-compatible API:
+Moonlight speaks two wire formats: the **OpenAI-compatible** API (`/chat/completions`) and **Anthropic's Messages API** (`/messages`). It picks the right one per provider, and Anthropic is auto-detected from the source, so there's nothing extra to set up.
 
 ```python
-# Built-in providers
-Provider(source="openai", api="sk-...")
-Provider(source="deepseek", api="sk-...")
+# Built-in shortcuts
+Provider(source="openai",     api="sk-...")
+Provider(source="deepseek",   api="sk-...")
 Provider(source="openrouter", api="sk-...")
-Provider(source="together", api="...")
-Provider(source="groq", api="gsk-...")
-Provider(source="google", api="...")
+Provider(source="together",   api="...")
+Provider(source="groq",       api="gsk-...")
+Provider(source="anthropic",  api="sk-ant-...")   # auto-selects the Anthropic format
 
-# Custom endpoints
-Provider(source="http://localhost:11434/v1", api="ollama")
+# Any other OpenAI-compatible endpoint via full URL
+Provider(source="http://localhost:11434/v1", api="ollama")  # local Ollama / vLLM
+Provider(source="https://generativelanguage.googleapis.com/v1beta/openai/", api="...")  # Google AI
 Provider(source="https://api.custom.com/v1", api="key")
 ```
 
-Supported providers: OpenAI, DeepSeek, Together, Groq, Google AI, HuggingFace, OpenRouter, or any custom OpenAI-compatible endpoint.
+Built-in shortcuts: **OpenAI, DeepSeek, Together, Groq, OpenRouter, Anthropic.** Any other OpenAI-compatible endpoint (Google AI, Hugging Face, local servers, gateways) works via its full URL.
+
+> The structured-output and image-generation helpers currently assume OpenAI-compatible providers. Plain chat completions work on Anthropic today.
 
 ### Model Validation
 
@@ -421,6 +433,8 @@ Validation prevents runtime errors by checking:
 - **Modality support**: Verifies model supports requested input/output types (images, video, etc.)
 - **Image generation**: Confirms model can generate images when `image_gen=True`
 
+Capabilities are read from each provider's `/models` endpoint and normalized into one shape. Providers report very different metadata (or none at all), so when a capability can't be determined Moonlight **fails open** and won't block a request on something it couldn't verify. See [`structures.txt`](moonlight/src/provider/structures.txt) for the per-provider response shapes.
+
 Errors are raised immediately during agent initialization with clear messages:
 
 ```python
@@ -434,6 +448,10 @@ except AgentError as e:
     print(e)
     # Output: This model does not support image generation
 ```
+
+### Reliability
+
+Every provider call retries transient failures automatically. That covers network errors and the retryable status codes (`408, 429, 500, 502, 503, 504`), using exponential backoff with jitter and honoring a server's `Retry-After` header when present. Permanent errors (`400 / 401 / 403 / 404`) fail fast instead of burning attempts. Agents get this out of the box (two retries by default), and `GetCompletion` exposes `max_retries` and `retry_backoff` if you call it directly.
 
 ### Token Tracking
 
@@ -476,31 +494,15 @@ Handles:
 
 Error messages include context from provider metadata when available, making debugging easier.
 
-## Architecture
-
-```
-moonlight/
-└── src/
-    ├── agent/
-    │   ├── base.py             # Content dataclass
-    │   ├── history.py          # AgentHistory (conversation + image processing)
-    │   └── main.py             # Agent class
-    ├── provider/
-    │   ├── main.py             # Provider class
-    │   └── completion.py       # GetCompletion (async API calls)
-    └── helpers/
-        └── model_converter.py  # Schema/model conversion utilities
-```
-
 ## Design Philosophy
 
 Moonlight is intentionally minimal:
 
 - **No framework lock-in**: Standard Python async, bring your own orchestration
 - **No hidden magic**: Direct API calls, explicit control flow
-- **No bloat**: Zero dependencies on OpenAI SDK or heavy frameworks
+- **No bloat**: Zero dependencies on vendor SDKs or heavy frameworks
 - **Full control**: Access raw responses, customize at any level
-- **Provider agnostic**: Works with any OpenAI-compatible API
+- **Provider agnostic**: Any OpenAI-compatible API, plus Anthropic
 
 ## What Moonlight Doesn't Do
 
@@ -510,7 +512,6 @@ To stay lightweight, Moonlight does not include:
 - RAG systems or vector databases
 - Web scraping or search
 - Streaming responses
-- Built-in retry logic (in development)
 - Observability or logging (in development)
 - Audio/video output (in development)
 - MCP (Model Context Protocol) integration (in consideration)
@@ -567,6 +568,35 @@ pip install dist/moonlight_ai-*.whl
 
 # Test
 python -c "from moonlight import Agent; print('OK')"
+```
+
+## Local Setup (No Build)
+
+Moonlight is pure Python, so you can vendor it into a project instead of installing from PyPI. Copy the `moonlight/` folder next to your script, install the three runtime deps, and import it. It's the same vendored layout `test.py` in this repo uses.
+
+```bash
+# from your project root, with the moonlight/ folder copied in
+pip install -r requirements.txt   # httpx, pydantic, requests
+```
+
+```python
+# your_script.py  (sits next to the moonlight/ folder)
+import asyncio
+from moonlight import Provider, Agent, Content
+
+provider = Provider(source="deepseek", api="your-deepseek-key")
+agent = Agent(provider=provider, model="deepseek-chat")
+
+response = asyncio.run(agent.run(Content("Hello!")))
+print(response.content)
+```
+
+Layout:
+
+```
+your-project/
+├── moonlight/        # the copied folder
+└── your_script.py
 ```
 
 ## License
