@@ -60,3 +60,5 @@ docs/_build/
 *.bak
 *.swp
 *~
+CLAUDE.md
+test.py

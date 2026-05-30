@@ -1,8 +1,10 @@
-import httpx, json, re
+import httpx, json, re, random, asyncio
 from dataclasses import dataclass
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from .main import Provider
+
+RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
 
 class GetCompletionError(Exception): pass
 
@@ -48,163 +50,22 @@ class Completion:
             f"total_tokens={self.total_tokens})"
         )
 
-async def CheckModel(provider, model: str) -> Dict[str, Any]:
-    """
-    Validate model existence and retrieve its capabilities from the provider.
+def _retry_delay(
+    attempt: int, 
+    backoff: float, 
+    response: Optional[httpx.Response] = None
+) -> float:
+    # Honor server's Retry-After (seconds) when present, else exponential backoff w/ full jitter (cap 30s)
+    if response is not None:
+        retry_after = response.headers.get("retry-after", "")
+        if retry_after.isdigit():
+            return min(float(retry_after), 30.0)
+    return random.uniform(0, min(30.0, backoff * (2 ** attempt)))
 
-    Queries the provider's model registry to determine if the specified model exists
-    and extracts key configuration details including context limits, supported modalities,
-    and reasoning capabilities.
-
-    Args:
-        provider: LLM provider instance with get_source() and get_api() methods
-        model (str): Model identifier (e.g., "openai/gpt-4-0314")
-
-    Returns:
-        - Dict[str, Any]: Model information dictionary containing:
-            - model_exists (bool): Whether the model is available
-            - context_length (int | None): Maximum input context tokens
-            - max_completion_tokens (int | None): Maximum output tokens
-            - reasoning (bool): Whether model supports reasoning/chain-of-thought
-            - input_modalities (List[str]): Supported input types (e.g., ["text", "image"])
-            - output_modalities (List[str]): Supported output types (e.g., ["text"])
-
-    Raises:
-        GetCompletionError: If provider or model parameter is missing
-        httpx.HTTPStatusError: If the API request fails
-
-    Example:
-        >>> info = await CheckModel(provider, "openai/gpt-4")
-        >>> if info["model_exists"]:
-        ...     print(f"Context: {info['context_length']} tokens")
-    """
-    
-    # Example structure
-    # {
-    #     "id": "openai/gpt-4-0314",
-    #     "canonical_slug": "openai/gpt-4-0314",
-    #     "hugging_face_id": null,
-    #     "name": "OpenAI: GPT-4 (older v0314)",
-    #     "created": 1685232000,
-    #     "description": "GPT-4-0314 is the first version of GPT-4 released, with a context length of 8,192 tokens, and was supported until June 14. Training data: up to Sep 2021.",
-    #     "context_length": 8191,
-    #     "architecture": {
-    #         "modality": "text->text",
-    #         "input_modalities": [
-    #             "text"
-    #         ],
-    #         "output_modalities": [
-    #             "text"
-    #         ],
-    #         "tokenizer": "GPT",
-    #         "instruct_type": null
-    #     },
-    #     "pricing": {
-    #         "prompt": "0.00003",
-    #         "completion": "0.00006",
-    #         "request": "0",
-    #         "image": "0",
-    #         "web_search": "0",
-    #         "internal_reasoning": "0"
-    #     },
-    #     "top_provider": {
-    #         "context_length": 8191,
-    #         "max_completion_tokens": 4096,
-    #         "is_moderated": true
-    #     },
-    #     "per_request_limits": null,
-    #     "supported_parameters": [
-    #         "frequency_penalty",
-    #         "logit_bias",
-    #         "logprobs",
-    #         "max_tokens",
-    #         "presence_penalty",
-    #         "response_format",
-    #         "seed",
-    #         "stop",
-    #         "structured_outputs",
-    #         "temperature",
-    #         "tool_choice",
-    #         "tools",
-    #         "top_logprobs",
-    #         "top_p"
-    #     ],
-    #     "default_parameters": {}
-    # }
-    
-    if not provider:
-        raise GetCompletionError("LLM Provider must be given")
-
-    if not model:
-        raise GetCompletionError("Model must be provided")
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.get(
-                url=f"{provider.get_source()}/models",
-                headers={
-                    "Authorization": f"Bearer {provider.get_api()}",
-                    "Content-Type": "application/json",
-                },
-            )
-            r.raise_for_status()
-            data = r.json()
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise GetCompletionError("Provider endpoint is incompatible (missing '/models').")
-        raise GetCompletionError(f"API Error: {e.response.status_code} - {e.response.text}")
-    except httpx.RequestError as e:
-        raise GetCompletionError(f"Request failed: {str(e)}")
-
-    # Build index: id -> model_info
-    index = {}
-    for m in data["data"]:
-        mid = m.get("id")
-        if mid:
-            index[mid] = m
-
-    if model not in index:
-        return {
-            "model_exists": False,
-            "context_length": None,
-            "max_completion_tokens": None,
-            "reasoning": False,
-            "input_modalities": [],
-            "output_modalities": [],
-        }
-
-    m = index[model]
-
-    arch = m.get("architecture", {}) or {}
-
-    input_modalities = arch.get("input_modalities", []) or []
-    output_modalities = arch.get("output_modalities", []) or []
-
-    # Prefer top_provider limits (actual routed limits)
-    top = m.get("top_provider") or {}
-
-    context_length = top.get("context_length") or m.get("context_length")
-    max_completion_tokens = top.get("max_completion_tokens")
-
-    # Heuristic for reasoning capability
-    pricing = m.get("pricing", {}) or {}
-    supported = m.get("supported_parameters", []) or []
-
-    reasoning = (
-        ("reasoning" in supported)
-        or (pricing.get("internal_reasoning", "0") != "0")
-    )
-
-    return {
-        "model_exists": True,
-        "context_length": context_length,
-        "max_completion_tokens": max_completion_tokens,
-        "reasoning": reasoning,
-        "input_modalities": input_modalities,
-        "output_modalities": output_modalities,
-    }
-
-def _strip_tags(text: str, tags: List[str]) -> str:
+def _strip_tags(
+    text: str, 
+    tags: List[str]
+) -> str:
     for tag in tags:
         # remove opening tags
         text = re.sub(rf"<{tag}[^>]*?>", "", text, flags=re.IGNORECASE)
@@ -305,6 +166,8 @@ async def GetCompletion(
     provider: Provider,
     model: str,
     messages: List[Dict[str, str]],
+    max_retries: int = 2,
+    retry_backoff: float = 1.0,
     **kwargs
 ) -> Completion:
     """
@@ -328,7 +191,7 @@ async def GetCompletion(
         GetCompletionError: If required arguments are missing, messages are empty, or invalid kwargs are passed.
     """
     
-    # Example Structure
+    # OpenAI Structure
     # {
     #     "id": "gen-123456789-a1b2c3D4z5C7S4",
     #     "provider": "Seed",
@@ -402,23 +265,36 @@ async def GetCompletion(
     unknown = set(kwargs) - allowed
     
     if unknown: raise GetCompletionError(f"Unknown properties: {unknown}")
-          
+    
     async with httpx.AsyncClient(timeout=300.0) as client:
-        request = await client.post(
-            url=f"{provider.get_source()}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {provider.get_api()}",
-                "Content-Type": "application/json"
-            },
-            data=json.dumps({
-                "model": model,
-                "messages": messages,
-                **kwargs,
-            })
-        )
+        # Retry Mechanism
+        for attempt in range(max_retries + 1):
+            try:
+                request = await client.post(
+                    url=f"{provider.get_source()}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {provider.get_api()}",
+                        "Content-Type": "application/json"
+                    },
+                    data=json.dumps({
+                        "model": model,
+                        "messages": messages,
+                        **kwargs,
+                    })
+                )
+            except Exception as e:
+                if attempt < max_retries:
+                    await asyncio.sleep(_retry_delay(attempt, retry_backoff))
+                    continue
+                return Completion(error=f"Request failed after {attempt + 1} attempts: {e}")
         
-        # request.raise_for_status()
-        
+            # Retry one last time in case of transient server errors
+            if request.status_code in RETRYABLE_STATUS and attempt < max_retries:
+                await asyncio.sleep(_retry_delay(attempt, retry_backoff, request))
+                continue
+            
+            break
+                
         if request.status_code != 200:
             return Completion(error=_check_for_errors(request))
         

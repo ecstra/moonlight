@@ -10,10 +10,7 @@ ENDPOINTS = {
     "together": "https://api.together.xyz/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "deepseek": "https://api.deepseek.com",
-    "groq": "https://api.groq.com/openai/v1",
-    "google": "https://generativelanguage.googleapis.com/v1beta/openai/",
-    "hf_together": "https://huggingface.co/api/inference-proxy/together",
-    "hf": "https://router.huggingface.co/v1",
+    "groq": "https://api.groq.com/openai/v1"
 }
 
 class Provider:

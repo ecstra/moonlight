@@ -6,7 +6,11 @@ from dataclasses import is_dataclass, dataclass
 from .base import Content
 from .history import AgentHistory
 from ..helpers import ModelConverter
-from ..provider import Provider, GetCompletion, Completion, CheckModel
+from ..provider import (
+    Provider, 
+    GetCompletion, Completion, 
+    CheckModel
+)
 
 class AgentError(Exception):
     pass
@@ -39,7 +43,7 @@ class Agent:
         _contextual_tokens (int): Number of tokens currently in the conversation context.
         _consumed_tokens (int): Total tokens consumed across all interactions.
         _history (AgentHistory): Manages the conversation history and system role.
-        _model_data (dict): Validated model metadata including capabilities and limitations.
+        _model_info (ModelInfo): Validated model metadata including capabilities and limitations.
     
     Example:
         ```python
@@ -98,7 +102,7 @@ class Agent:
         self._history = None
         
         # Validate params
-        self._model_data = None
+        self._model_info = None
         self._validate()
         
         # construct system role
@@ -171,33 +175,34 @@ class Agent:
         # Lazy init...
         # Just check before running
         # Run is async anyways, so no need for a model factory
-        if self._model_data is not None: return
+        if self._model_info is not None: return
         
         # Validate the model and it's params
         # using the actual data gotten from the provider
-        self._model_data = await CheckModel(
+        self._model_info = await CheckModel(
             provider=self._provider,
             model=self._model
         )
         
-        if not self._model_data["model_exists"]:
+        if not self._model_info.model_exists:
             raise AgentError(f"Model {self._model} does not exist in the given provider.")
         
         # Modalities Check
         # Can the model handle image input/output?
-        if self._image_gen and ("image" not in self._model_data["output_modalities"]):
+        if self._image_gen and ("image" not in self._model_info.output_modalities):
             raise AgentError("This model does not support image generation")
         
         # Max allowed tokens check (sometimes it's null)                
-        max_allowed_tokens =  self._model_data["max_completion_tokens"]
+        max_allowed_tokens =  self._model_info.max_completion_tokens
         if max_allowed_tokens:
-            if self._params.get("max_completion_tokens"):
-                if self._params['max_completion_tokens'] > max_allowed_tokens:
-                    raise AgentError(f"Max Completion tokens {self._params['max_completion_tokens']} exceeds model limits of {max_allowed_tokens}")
-            
-            if self._params.get("max_tokens"):
-                if self._params["max_tokens"] > max_allowed_tokens:
-                    raise AgentError(f"Max Completion tokens {self._params['max_tokens']} exceeds model limits of {max_allowed_tokens}")
+            if (max_allowed_tokens > 0): 
+                if self._params.get("max_completion_tokens"):
+                    if self._params['max_completion_tokens'] > max_allowed_tokens:
+                        raise AgentError(f"Max Completion tokens {self._params['max_completion_tokens']} exceeds model limits of {max_allowed_tokens}")
+                
+                if self._params.get("max_tokens"):
+                    if self._params["max_tokens"] > max_allowed_tokens:
+                        raise AgentError(f"Max Completion tokens {self._params['max_tokens']} exceeds model limits of {max_allowed_tokens}")
         
         # TODO: Get the max context length and pass it to history if persistance is enabled
         # Then in history auto cleanup the old messages if it exceeds context length * 0.8 
@@ -276,7 +281,7 @@ class Agent:
                                     or a parsed object if an output schema is defined.
         """
         
-        # Lazy init. Fill up _model_data if not already filled and perform a check
+        # Lazy init. Fill up _model_info if not already filled and perform a check
         await self._ensure_initialized()
         
         # TODO: Evaluate whether this "run" will grow. 
@@ -285,7 +290,7 @@ class Agent:
         # And then expand to sequential and parallel running.
         
         # Check if prompt has images, but images should not be provided.
-        if prompt.images and ("image" not in self._model_data["input_modalities"]):
+        if prompt.images and ("image" not in self._model_info.input_modalities):
             raise AgentError("This model does not support image inputs.")
         
         # Custom Output is set to true if output schema is provider

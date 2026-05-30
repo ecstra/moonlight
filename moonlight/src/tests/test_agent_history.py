@@ -23,7 +23,6 @@ sys.modules['agent.history'] = history_module
 history_spec.loader.exec_module(history_module)
 AgentHistory = history_module.AgentHistory
 
-
 class TestAgentHistory(unittest.IsolatedAsyncioTestCase):
     
     def test_initialization(self):
