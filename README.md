@@ -116,6 +116,7 @@ The SDK automatically:
 - Injects schema into system prompt
 - Validates and parses response into your model
 - Handles nested structures and optional fields
+- Self-corrects on validation failure: shows the model its error and retries (`schema_retries`, default 2) before falling back to the raw response
 
 ### Tool Calling (Explicit, Schema-Driven)
 
@@ -284,7 +285,7 @@ response = asyncio.run(agent.run(
     Content(
         text="What's in these images?",
         images=[
-            "https://example.com/image.jpg",  # URL
+            "https://example.com/image.jpg",   # URL
             "/path/to/local/image.png",        # Local file
             "data:image/jpeg;base64,..."       # Base64
         ]
@@ -380,6 +381,64 @@ agent.clear()
 # Update system role mid-conversation
 agent.update_system_role("You are now a pirate")
 ```
+
+### Context Management (Auto-Summarization)
+
+Long conversations are kept within the model's context window automatically. When usage crosses `summarize_threshold` of the context length (default `0.85`), the oldest turns are folded into a running summary that lives in the system role and then dropped, while the most recent `keep_recent` messages stay verbatim.
+
+```python
+agent = Agent(
+    provider=provider,
+    model="anthropic/claude-opus-4.5",
+    summarize_threshold=0.85,  # compact at 85% of the context window (0 disables)
+    keep_recent=2,             # keep the last N messages verbatim
+)
+
+# Just keep talking. Compaction happens on its own when the window fills up.
+for message in conversation:
+    await agent.run(Content(message))
+```
+
+It is **reactive**: the check runs when you send a new message, using the previous turn's token count, and the summary itself is a plain side-call to the same model. It only engages when the provider reports a context length (surfaced as `ModelInfo.compactable`). For providers that don't report one (such as OpenAI or DeepSeek), it fails open and leaves history untouched.
+
+### Web Search & Grounding
+
+Agents can search the web and ground their answers in real sources. With `web_search=True`, `run()` first does a short research loop: the model decides whether it actually needs to search and, if so, proposes queries (it searches only when needed and reuses anything already gathered). Moonlight runs each query (DuckDuckGo via `ddgs`) and fetches the pages (Scrapy), up to `max_search_iterations` searches. The gathered results are then folded into the prompt and answered through the normal flow, so structured output and everything else still apply.
+
+```python
+agent = Agent(
+    provider=provider,
+    model="anthropic/claude-opus-4.5",
+    web_search=True,
+    max_search_iterations=3,   # cap on searches per run
+)
+
+resp = await agent.run(Content("What changed in the latest Python release?"))
+print(resp.content)   # answer grounded in the fetched pages
+```
+
+It composes with structured output: set `output_schema` and the grounded answer comes back as a validated instance.
+
+```python
+class Summary(BaseModel):
+    headline: str
+    points: list[str]
+
+agent = Agent(provider=provider, model="...", web_search=True, output_schema=Summary)
+result = await agent.run(Content("Summarize the latest Python release."))
+print(result.headline, result.points)
+```
+
+How it works:
+
+- **Searches only when needed**: a small JSON decision format lets the model decide whether to search, what to search, or to stop. It works the same on OpenAI-compatible providers and Anthropic.
+- **Grounded then answered**: the fetched page text (full, not truncated) is folded into the prompt, and the answer runs through the normal flow, so `output_schema`, persistence, and token tracking all apply.
+- **Bounded**: at most `max_search_iterations` searches per run.
+
+Notes:
+
+- This is text grounding. Pages are fetched as static HTML, so JavaScript-rendered content can come back thin, and DuckDuckGo can rate-limit.
+- `web_search` cannot be combined with `image_gen`.
 
 ### Provider Support
 
@@ -510,7 +569,6 @@ To stay lightweight, Moonlight does not include:
 
 - Multi-agent orchestration (build your own with asyncio)
 - RAG systems or vector databases
-- Web scraping or search
 - Streaming responses
 - Observability or logging (in development)
 - Audio/video output (in development)
@@ -527,6 +585,9 @@ agent = Agent(
     system_role="You are an expert analyst",
     output_schema=MyModel,   # Optional structured output
     image_gen=False,         # Enable image generation (conflicts with output_schema)
+    schema_retries=2,        # Self-correction attempts on schema-validation failure
+    summarize_threshold=0.85, # Auto-summarize history near the context limit (0 disables)
+    keep_recent=2,           # Recent messages kept verbatim when summarizing
     temperature=0.7,
     top_p=0.9,
     top_k=40,
@@ -551,6 +612,8 @@ tokens = agent.get_total_tokens()
 - `tools`, `tool_choice`: Tool calling configuration (planned)
 - `plugins`: Provider-specific plugins
 - `reasoning`, `verbosity`: Control reasoning traces
+
+Agent-level params (not forwarded to the provider): `schema_retries`, `summarize_threshold`, `keep_recent`. See the sections above.
 
 ## Building From Source
 

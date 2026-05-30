@@ -1,11 +1,13 @@
 from typing import Type, Union, Optional, Any, Dict
 from textwrap import dedent
+from datetime import date
 from pydantic import BaseModel
 from dataclasses import is_dataclass, dataclass
 
 from .base import Content
 from .history import AgentHistory, TypeAgentHistory
 from ..helpers import ModelConverter
+from ..helpers.web_search import web_search
 from ..provider import (
     Provider,
     GetCompletion, Completion,
@@ -34,6 +36,12 @@ class Agent:
         summarize_threshold (float): Fraction (0-1) of the model's context length at which older
             turns are auto-summarized into the system role. Set to 0 to disable (default 0.85).
         keep_recent (int): Most recent messages kept verbatim when summarizing (default 2).
+        web_search (bool): If True, the agent may search the web (DuckDuckGo + Scrapy) when it
+            needs external info, folding the results into the prompt before answering. It only
+            searches when needed and reuses results already gathered. Works alongside output_schema.
+        max_search_iterations (int): Max searches per run before answering (default 3).
+        max_verify_iterations (int): After a grounded answer, max fact-check passes that drop
+            claims the search results don't support (default 2). Set to 0 to disable.
         **kwargs: Sampling/config params forwarded to the provider (temperature, top_p, top_k,
             max_completion_tokens, frequency_penalty, presence_penalty, etc.).
 
@@ -43,6 +51,7 @@ class Agent:
         - Structured output: JSON mode, schema injection, validation, and self-correction retries.
         - Multimodal image input and image generation.
         - Auto-summarization of old turns as the context window fills.
+        - Optional web-search grounding before answering (DuckDuckGo + Scrapy).
         - Token tracking (current context and cumulative consumed).
         - Transient-failure retries and provider error reporting.
 
@@ -87,6 +96,9 @@ class Agent:
         schema_retries: int = 2,
         summarize_threshold: float = 0.85,
         keep_recent: int = 2,
+        web_search: bool = False,
+        max_search_iterations: int = 3,
+        max_verify_iterations: int = 2,
         **kwargs
     ):
         # Agent params
@@ -111,6 +123,16 @@ class Agent:
         self._keep_recent = keep_recent
         self._summary = ""            # running summary of folded-out turns
         self._base_system_role = ""   # system role without the summary section
+
+        # Web-search grounding: when enabled, run() drives a search/answer loop
+        # (up to max_search_iterations) instead of a single completion.
+        self._web_search = web_search
+        self._max_search_iterations = max_search_iterations
+
+        # After a grounded answer, a fact-check loop (up to max_verify_iterations)
+        # re-checks each claim against the search results and drops anything the
+        # results do not actually support. Set to 0 to disable.
+        self._max_verify_iterations = max_verify_iterations
 
         # total tokens
         self._contextual_tokens = 0 # to count how many tokens are there in "history" right now
@@ -199,6 +221,17 @@ class Agent:
 
         if not isinstance(self._keep_recent, int) or self._keep_recent < 0:
             raise AgentError("keep_recent must be a non-negative integer")
+
+        # Web search gathers grounding before the normal completion, so it works
+        # with output_schema. It can't pair with image generation, though.
+        if self._web_search and self._image_gen:
+            raise AgentError("web_search cannot be combined with image_gen")
+
+        if not isinstance(self._max_search_iterations, int) or self._max_search_iterations < 1:
+            raise AgentError("max_search_iterations must be a positive integer")
+
+        if not isinstance(self._max_verify_iterations, int) or self._max_verify_iterations < 0:
+            raise AgentError("max_verify_iterations must be a non-negative integer")
 
     async def _ensure_initialized(self):
         # Lazy init...
@@ -471,21 +504,181 @@ class Agent:
         self._apply_system_role()              # refresh system role with the new summary
         self._history.replace_history(recent)  # drop folded turns, keep recent verbatim
 
-    def _coerce_output(
-        self, 
-        content: str
-    ):
+    async def _search_context(
+        self,
+        prompt: Content
+    ) -> str:
         """
-        Parse content into the output schema.
-        Returns (instance, None) on success or (None, error_message) on failure.
+        Gather web-search grounding for the prompt.
+
+        Runs a search-only loop with a dedicated 'web research' system role over a
+        copy of the conversation: the model proposes queries, web_search runs them,
+        and the formatted results are accumulated until the model stops (or
+        max_search_iterations is reached). run() folds the returned text into the
+        prompt before the normal completion.
         """
-        try:
-            return ModelConverter.json_to_model(self._output_schema, content), None
-        except Exception as e:
-            return None, str(e)
+        
+        class _SearchStep(BaseModel):
+            # One decision per search step: the next query, or null when done searching.
+            search: Optional[str] = None
+
+        # Copy the conversation but swap in the research system role.
+        today = date.today().isoformat()
+        working = list(self.get_history())
+        working[0] = {
+            "role": "system",
+            "content": dedent(f"""
+                Today's date is {today}. Use it to judge what is current, and write
+                time-aware queries (search the actual current year, not an old one).
+
+                You decide whether a web search is needed to answer the user's request,
+                and if so, what to search for.
+
+                Reply ONLY with JSON matching this schema:
+                {ModelConverter.model_to_schema(_SearchStep)}
+
+                Set "search" to a focused query ONLY when the request needs current,
+                external, or factual information that you do not already know or that has
+                not already been gathered earlier in this conversation. If you can answer
+                from your own knowledge or from results already gathered, set "search" to
+                null. Do not search for things you already have. Before you stop, make sure
+                the gathered results cover everything the request asks for, not just the main
+                fact. If a needed part is still missing and likely findable, search for it.
+
+                When you do search, write a clear, specific query about the actual subject,
+                using concrete names and terms, not vague wording copied from the request.
+                When the request asks for the latest or current information, query for that
+                directly and prefer the most authoritative, up-to-date source.
+            """).strip()
+        }
+        working.append({"role": "user", "content": prompt.text})
+
+        chunks: list[str] = []
+        for _ in range(self._max_search_iterations):
+            response = await GetCompletion(
+                provider=self._provider,
+                model=self._model,
+                messages=working,
+                **self._params,
+            )
+            self._account_tokens(response)
+            if response.error:
+                break
+
+            content = (response.content or "").strip()
+            print(content)
+            working.append({"role": "assistant", "content": content})
+            
+            try:
+                step: _SearchStep = ModelConverter.json_to_model(_SearchStep, content)
+            except:
+                break
+            
+            if not step.search:
+                break
+
+            results = await web_search(step.search, max_results=5)
+            chunks.append(results)
+            working.append({
+                "role": "user", 
+                "content": dedent(f"""
+                    ## Results for: {step.search}
+
+                    ```text
+                    {results}
+                    ```
+                    
+                    ---
+                    
+                    If these results answer the request, set "search" to null. If they are
+                    off-topic or incomplete, set "search" to a better, more specific query.
+                """).strip()
+            })
+
+        return "\n\n".join(chunk for chunk in chunks if chunk)
+
+    async def _verify_grounding(
+        self,
+        grounding: str,
+        response: Completion
+    ) -> Completion:
+        """
+        Fact-check a grounded answer against its sources, dropping unsupported claims.
+
+        Runs a verify-and-revise loop: a strict checker compares the drafted answer to the
+        web search results and, when a claim lacks hard proof, returns a corrected answer
+        with that claim removed. Repeats up to max_verify_iterations or until the answer is
+        fully supported. Returns the (possibly revised) Completion, keeping the original if
+        a verification step errors.
+        """
+
+        class _Verdict(BaseModel):
+            # ok=True when every claim is backed by the sources; otherwise answer holds a
+            # corrected version with the unsupported claims removed.
+            ok: bool
+            answer: str
+
+        answer = response.content or ""
+        for _ in range(self._max_verify_iterations):
+            messages = [
+                {
+                    "role": "system",
+                    "content": dedent(f"""
+                        You are a strict fact-checker. Check the drafted answer against the
+                        search results only. A claim is allowed only when the results contain
+                        hard proof of it. A loose or partial match (a similar name, a shared
+                        username, a related but different topic) is not proof.
+
+                        Reply ONLY with JSON matching this schema:
+                        {ModelConverter.model_to_schema(_Verdict)}
+
+                        If every claim is supported, set "ok" to true and "answer" to the
+                        drafted answer unchanged. If any claim is not supported, set "ok" to
+                        false and "answer" to a corrected version in the same format, with the
+                        unsupported claims removed or replaced by an explicit note that they
+                        could not be confirmed. Do not add new claims.
+                    """).strip()
+                },
+                {
+                    "role": "user",
+                    "content": dedent(f"""
+                        ## Search results
+                        ```text
+                        {grounding}
+                        ```
+
+                        ## Drafted answer
+                        ```text
+                        {answer}
+                        ```
+                    """).strip()
+                },
+            ]
+
+            check = await GetCompletion(
+                provider=self._provider,
+                model=self._model,
+                messages=messages,
+                **self._params,
+            )
+            self._account_tokens(check)
+            if check.error:
+                break
+
+            try:
+                verdict: _Verdict = ModelConverter.json_to_model(_Verdict, check.content)
+            except:
+                break
+
+            answer = verdict.answer or answer
+            if verdict.ok:
+                break
+
+        response.content = answer
+        return response
 
     async def run(
-        self, 
+        self,
         prompt: Content
     ) -> Union[Completion, Any]:
         """
@@ -513,6 +706,43 @@ class Agent:
         if prompt.images and self._model_info.input_modalities and ("image" not in self._model_info.input_modalities):
             raise AgentError("This model does not support image inputs.")
 
+        # Web-search grounding: gather results first, then fold them into the
+        # prompt so the normal flow (schema, persistence, etc.) produces the answer.
+        grounded = False
+        grounding = ""
+        if self._web_search:
+            grounding = await self._search_context(prompt)
+            print(f"Grounding: {grounding}")
+            if grounding:
+                grounded = True
+                today = date.today().isoformat()
+                prompt = Content(
+                    text=dedent(f"""
+                        {prompt.text} 
+                        
+                        ---
+                        
+                        Today's date is {today}. Base your answer on the web search
+                        results below. When sources disagree, trust the most recent and
+                        most official one, and if several values appear (for example
+                        multiple version numbers or dates) treat the newest as current
+                        rather than reporting an older value as the latest. Share a claim
+                        only when the results contain hard proof of it. No hard proof
+                        means do not share it. A loose or partial match (a similar name, a
+                        shared username, a related but different topic) is not proof, so do
+                        not present it as fact. When the results do not actually answer the
+                        request, reply with one brief sentence that you could not confirm the
+                        information, and nothing more. Do not narrate your searches, list the
+                        sources, or mention unrelated results you came across.
+                        
+                        ## Grounding:
+                        ```text
+                        {grounding}
+                        ```
+                        """),
+                    images=prompt.images,
+                )
+
         # Custom Output is set to true if output schema is provided
         custom_output = True if self._output_schema else False
 
@@ -537,9 +767,19 @@ class Agent:
         # error, and retry up to self._schema_retries times.
         response = await self._complete(optional)
 
+        # Fact-check the grounded answer against its sources, dropping unsupported claims.
+        if grounded and self._max_verify_iterations and not response.error:
+            response = await self._verify_grounding(grounding, response)
+
         parsed = None
         if custom_output and not response.error:
-            parsed, err = self._coerce_output(response.content)
+            parsed = None
+            err = None
+            
+            try:
+                parsed = ModelConverter.json_to_model(self._output_schema, response.content)
+            except Exception as e:
+                err = e
 
             attempt = 0
             while parsed is None and attempt < self._schema_retries:
@@ -569,7 +809,7 @@ class Agent:
                 if response.error:
                     break  # provider error mid-correction -> fall back below
 
-                parsed, err = self._coerce_output(response.content)
+                parsed = ModelConverter.json_to_model(self._output_schema, response.content)
 
         # Persist the final assistant turn, or wipe the working history (which
         # also discards the user message and any correction turns).
