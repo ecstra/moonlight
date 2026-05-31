@@ -138,11 +138,6 @@ class AgentHistory:
         self._history = []
         self.update_system_role(self._system_role)
 
-    def replace_history(self, messages):
-        # Keep the current system message, replace everything after it.
-        system = self._history[0] if (self._history and self._history[0].get("role") == "system") else { "role": "system", "content": self._system_role }
-        self._history = [system] + list(messages)
-
     def __str__(self) -> str:
         return str(self._history)
 

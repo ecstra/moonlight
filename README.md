@@ -403,7 +403,7 @@ It is **reactive**: the check runs when you send a new message, using the previo
 
 ### Web Search & Grounding
 
-Agents can search the web and ground their answers in real sources. With `web_search=True`, `run()` first does a short research loop: the model decides whether it actually needs to search and, if so, proposes queries (it searches only when needed and reuses anything already gathered). Moonlight runs each query (DuckDuckGo via `ddgs`) and fetches the pages (Scrapy), up to `max_search_iterations` searches. The gathered results are then folded into the prompt and answered through the normal flow, so structured output and everything else still apply.
+Agents can search the web and ground their answers in real sources. With `web_search=True`, `run()` first does a short research loop: the model decides whether it actually needs to search and, if so, proposes queries (it searches only when needed and reuses anything already gathered). Moonlight runs each query (DuckDuckGo via `ddgs`) and fetches the pages (Scrapy), up to `max_search_iterations` searches. The gathered results are folded into the prompt and answered through the normal flow, so structured output and everything else still apply.
 
 ```python
 agent = Agent(
@@ -411,6 +411,7 @@ agent = Agent(
     model="anthropic/claude-opus-4.5",
     web_search=True,
     max_search_iterations=3,   # cap on searches per run
+    max_verify_iterations=2,   # cap on fact-check passes (0 disables)
 )
 
 resp = await agent.run(Content("What changed in the latest Python release?"))
@@ -432,12 +433,15 @@ print(result.headline, result.points)
 How it works:
 
 - **Searches only when needed**: a small JSON decision format lets the model decide whether to search, what to search, or to stop. It works the same on OpenAI-compatible providers and Anthropic.
-- **Grounded then answered**: the fetched page text (full, not truncated) is folded into the prompt, and the answer runs through the normal flow, so `output_schema`, persistence, and token tracking all apply.
-- **Bounded**: at most `max_search_iterations` searches per run.
+- **Grounded then answered**: the fetched page text is folded into the prompt and the answer runs through the normal flow, so `output_schema`, persistence, and token tracking all apply.
+- **No proof, no claim**: the answer is held to the sources. A fact-check pass (up to `max_verify_iterations`) re-reads the results and drops anything they don't support; if a claim is plausible but unproven it can run one more search to try to confirm it before dropping it. A loose match (a similar name, a shared username) is not treated as proof, and when nothing answers the request the agent says so rather than guessing.
+- **Context-light**: once the answer is produced, the bulky search results are dropped from history (only the question, a short marker, and the answer are kept), so grounding doesn't bloat later turns.
+- **Bounded**: at most `max_search_iterations` searches per run, plus at most `max_verify_iterations` fact-check passes.
 
 Notes:
 
-- This is text grounding. Pages are fetched as static HTML, so JavaScript-rendered content can come back thin, and DuckDuckGo can rate-limit.
+- This is text grounding. Pages are fetched as static HTML, so JavaScript-rendered content can come back thin, and DuckDuckGo can rate-limit. Per-page text is capped to keep token use bounded, so very long pages are clipped.
+- Because grounding is strict, fields that the fetched pages don't actually cover may come back empty rather than filled from the model's own memory. That is intended.
 - `web_search` cannot be combined with `image_gen`.
 
 ### Provider Support
@@ -588,6 +592,9 @@ agent = Agent(
     schema_retries=2,        # Self-correction attempts on schema-validation failure
     summarize_threshold=0.85, # Auto-summarize history near the context limit (0 disables)
     keep_recent=2,           # Recent messages kept verbatim when summarizing
+    web_search=False,        # Ground answers in web search (conflicts with image_gen)
+    max_search_iterations=3, # Cap on searches per grounded run
+    max_verify_iterations=2, # Cap on fact-check passes for a grounded answer (0 disables)
     temperature=0.7,
     top_p=0.9,
     top_k=40,
@@ -613,7 +620,7 @@ tokens = agent.get_total_tokens()
 - `plugins`: Provider-specific plugins
 - `reasoning`, `verbosity`: Control reasoning traces
 
-Agent-level params (not forwarded to the provider): `schema_retries`, `summarize_threshold`, `keep_recent`. See the sections above.
+Agent-level params (not forwarded to the provider): `schema_retries`, `summarize_threshold`, `keep_recent`, `web_search`, `max_search_iterations`, `max_verify_iterations`. See the sections above.
 
 ## Building From Source
 
@@ -635,11 +642,11 @@ python -c "from moonlight import Agent; print('OK')"
 
 ## Local Setup (No Build)
 
-Moonlight is pure Python, so you can vendor it into a project instead of installing from PyPI. Copy the `moonlight/` folder next to your script, install the three runtime deps, and import it. It's the same vendored layout `test.py` in this repo uses.
+Moonlight is pure Python, so you can vendor it into a project instead of installing from PyPI. Copy the `moonlight/` folder next to your script, install the runtime deps, and import it. It's the same vendored layout `test.py` in this repo uses.
 
 ```bash
 # from your project root, with the moonlight/ folder copied in
-pip install -r requirements.txt   # httpx, pydantic, requests
+pip install -r requirements.txt   # httpx, pydantic, requests, ddgs, scrapy
 ```
 
 ```python

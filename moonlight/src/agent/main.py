@@ -281,6 +281,13 @@ class Agent:
         # default role if nothing is provided
         sys_role = sys_role.strip()
         if sys_role == "": sys_role = "You are a helpful assistant."
+        
+        sys_role += dedent(f"""
+        
+        ---
+        
+        Today's date is {date.today().isoformat()}
+        """)
 
         # Tell model about the model schema and return type
         # Ask it nicely to give it in that format
@@ -358,15 +365,16 @@ class Agent:
 
     async def _complete(
         self,
-        optional: dict
+        custom_params: dict = {},
+        override_messages: Optional[TypeAgentHistory] = None
     ) -> Completion:
         # One provider call over the current history, with token accounting.
         response = await GetCompletion(
             provider=self._provider,
             model=self._model,
-            messages=self.get_history(),
+            messages=override_messages if override_messages else self.get_history(),
             **self._params,
-            **optional
+            **custom_params
         )
         self._account_tokens(response)
         return response
@@ -476,10 +484,8 @@ class Agent:
             instruction = f"Summarize this conversation:\n\n{transcript}"
 
         # Plain text side-call: no schema, no response_format.
-        summary = await GetCompletion(
-            provider=self._provider,
-            model=self._model,
-            messages=[
+        summary = await self._complete(
+            override_messages=[
                 {
                     "role": "system",
                     "content": (dedent(f"""
@@ -489,20 +495,20 @@ class Agent:
                     """).strip()),
                 },
                 {"role": "user", "content": instruction},
-            ],
+            ]
         )
-
+        
         # Best effort: leave history untouched if the summary call fails.
         if summary.error or not summary.content:
             return
 
-        # The side-call consumes tokens (counted) but isn't the live context size.
-        if summary.total_tokens:
-            self._consumed_tokens += summary.total_tokens
-
         self._summary = summary.content.strip()
         self._apply_system_role()              # refresh system role with the new summary
-        self._history.replace_history(recent)  # drop folded turns, keep recent verbatim
+        self._history._history.append(recent)
+        
+        # Account for the recent tokens
+        # Rough estimation, will be accurate upon next request
+        self._contextual_tokens += len(recent) // 4
 
     async def _search_context(
         self,
@@ -523,12 +529,11 @@ class Agent:
             search: Optional[str] = None
 
         # Copy the conversation but swap in the research system role.
-        today = date.today().isoformat()
         working = list(self.get_history())
         working[0] = {
             "role": "system",
             "content": dedent(f"""
-                Today's date is {today}. Use it to judge what is current, and write
+                Today's date is {date.today().isoformat()}. Use it to judge what is current, and write
                 time-aware queries (search the actual current year, not an old one).
 
                 You decide whether a web search is needed to answer the user's request,
@@ -555,13 +560,9 @@ class Agent:
 
         chunks: list[str] = []
         for _ in range(self._max_search_iterations):
-            response = await GetCompletion(
-                provider=self._provider,
-                model=self._model,
-                messages=working,
-                **self._params,
+            response = await self._complete(
+                override_messages=working
             )
-            self._account_tokens(response)
             if response.error:
                 break
 
@@ -603,20 +604,23 @@ class Agent:
         response: Completion
     ) -> Completion:
         """
-        Fact-check a grounded answer against its sources, dropping unsupported claims.
+        Fact-check a grounded answer against its sources, proving or dropping each claim.
 
         Runs a verify-and-revise loop: a strict checker compares the drafted answer to the
-        web search results and, when a claim lacks hard proof, returns a corrected answer
-        with that claim removed. Repeats up to max_verify_iterations or until the answer is
-        fully supported. Returns the (possibly revised) Completion, keeping the original if
-        a verification step errors.
+        web search results. For a plausible but unproven claim it may issue its own follow-up
+        search, whose results are folded into the grounding and re-checked; a claim still
+        unproven is removed. Repeats up to max_verify_iterations or until the answer is fully
+        supported. Returns the (possibly revised) Completion, keeping the original if a
+        verification step errors.
         """
 
         class _Verdict(BaseModel):
-            # ok=True when every claim is backed by the sources; otherwise answer holds a
-            # corrected version with the unsupported claims removed.
+            # ok=True when every claim is backed by the sources. search holds a follow-up
+            # query when a plausible claim needs proof; answer holds the current best answer
+            # with unprovable claims removed.
             ok: bool
             answer: str
+            search: Optional[str] = None
 
         answer = response.content or ""
         for _ in range(self._max_verify_iterations):
@@ -632,11 +636,12 @@ class Agent:
                         Reply ONLY with JSON matching this schema:
                         {ModelConverter.model_to_schema(_Verdict)}
 
-                        If every claim is supported, set "ok" to true and "answer" to the
-                        drafted answer unchanged. If any claim is not supported, set "ok" to
-                        false and "answer" to a corrected version in the same format, with the
-                        unsupported claims removed or replaced by an explicit note that they
-                        could not be confirmed. Do not add new claims.
+                        If a claim is plausible but the results do not prove it, set "search"
+                        to a query that would find that proof and keep the claim in "answer"
+                        for now. If every claim is supported, set "ok" to true and "answer" to
+                        the drafted answer unchanged. If a claim still has no proof after
+                        searching, set "ok" to false and "answer" to a corrected version in
+                        the same format with that claim removed. Do not add new claims.
                     """).strip()
                 },
                 {
@@ -654,14 +659,11 @@ class Agent:
                     """).strip()
                 },
             ]
-
-            check = await GetCompletion(
-                provider=self._provider,
-                model=self._model,
-                messages=messages,
-                **self._params,
+            
+            check = await self._complete(
+                override_messages=messages
             )
-            self._account_tokens(check)
+            
             if check.error:
                 break
 
@@ -671,6 +673,15 @@ class Agent:
                 break
 
             answer = verdict.answer or answer
+
+            # A plausible-but-unproven claim: gather proof and re-check, instead of
+            # dropping it. The extra results never reach history (see run()'s trim).
+            if verdict.search:
+                results = await web_search(verdict.search, max_results=5)
+                if results:
+                    grounding = f"{grounding}\n\n{results}"
+                continue
+
             if verdict.ok:
                 break
 
@@ -708,11 +719,16 @@ class Agent:
 
         # Web-search grounding: gather results first, then fold them into the
         # prompt so the normal flow (schema, persistence, etc.) produces the answer.
+        original_prompt = prompt
         grounded = False
         grounding = ""
+        
+        # Baseline token count for history before this turn's grounding, used to restore an
+        # accurate context count after the bulky grounding is cropped out below.
+        g_tokens = self._contextual_tokens
+        
         if self._web_search:
             grounding = await self._search_context(prompt)
-            print(f"Grounding: {grounding}")
             if grounding:
                 grounded = True
                 today = date.today().isoformat()
@@ -754,22 +770,48 @@ class Agent:
 
         # Construct optional parameters that must be passed to the provider,
         # based on modality or response format.
-        optional = {}
+        custom_params = {}
 
         if custom_output:
-            optional["response_format"] = { "type": "json_object" }
+            custom_params["response_format"] = { "type": "json_object" }
 
         if self._image_gen:
-            optional["modalities"] = ["text", "image"]
-
+            custom_params["modalities"] = ["text", "image"]
+        
         # Initial completion, then self-correct if the structured output fails
         # schema validation: hand the model its own invalid output and the
         # error, and retry up to self._schema_retries times.
-        response = await self._complete(optional)
+        response = await self._complete(custom_params)
 
         # Fact-check the grounded answer against its sources, dropping unsupported claims.
         if grounded and self._max_verify_iterations and not response.error:
             response = await self._verify_grounding(grounding, response)
+
+        # For a grounded run, drop the bulky search results from the stored user message and
+        # keep only the original question plus a marker, to save context on later turns.
+        if grounded:
+            note = dedent(f"""
+                {original_prompt.text}
+
+                ---
+                [Web research was used to answer this. Raw results omitted from history to save context.]
+            """).strip()
+
+            # content is a list of parts when the prompt had images (text part first),
+            # otherwise a plain string.
+            last = self._history._history[-1]["content"]
+            if isinstance(last, list):
+                self._history._history[-1]["content"][0]["text"] = note
+            else:
+                self._history._history[-1]["content"] = note
+
+            # The token count was set from the call that still had the full grounding,
+            # which we just cropped out of history. Rebuild it from the pre-grounding
+            # baseline (g_tokens, the provider's accurate count for prior history) plus a
+            # rough estimate of just the small cropped note (~4 chars/token). This keeps
+            # the estimate scoped to the note instead of re-guessing the whole history,
+            # and the next turn's call recomputes it exactly.
+            self._contextual_tokens = g_tokens + (len(note) // 4)
 
         parsed = None
         if custom_output and not response.error:
@@ -805,14 +847,14 @@ class Agent:
                     )
                 )
 
-                response = await self._complete(optional)
+                response = await self._complete(custom_params)
                 if response.error:
                     break  # provider error mid-correction -> fall back below
 
                 parsed = ModelConverter.json_to_model(self._output_schema, response.content)
 
-        # Persist the final assistant turn, or wipe the working history (which
-        # also discards the user message and any correction turns).
+        # Persist the final assistant turn, or wipe the working history (which also
+        # discards the user message and any correction turns)
         if self._persistence:
             await self._history.add(
                 role="assistant",
