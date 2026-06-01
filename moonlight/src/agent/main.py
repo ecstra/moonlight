@@ -10,7 +10,8 @@ from ..helpers import ModelConverter
 from ..helpers.web_search import web_search
 from ..provider import (
     Provider,
-    GetCompletion, Completion,
+    GetCompletion, 
+    Completion,
     CheckModel
 )
 

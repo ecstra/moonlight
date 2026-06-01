@@ -571,11 +571,11 @@ Moonlight is intentionally minimal:
 
 To stay lightweight, Moonlight does not include:
 
-- Multi-agent orchestration (build your own with asyncio)
+- Multi-agent orchestration and runner engines (sequential, parallel, and data sharing are just `await` and `asyncio.gather` over `run()`, so a dedicated engine would only add a single-use wrapper)
+- Audio and video output (there is no provider-agnostic standard for these over chat completions, unlike text and image, so supporting them would mean per-provider special cases). Image output is supported where the provider returns it.
 - RAG systems or vector databases
 - Streaming responses
 - Observability or logging (in development)
-- Audio/video output (in development)
 - MCP (Model Context Protocol) integration (in consideration)
 
 These are left to you or future extensions to keep the core minimal.
@@ -587,14 +587,14 @@ agent = Agent(
     provider=provider,
     model="mistralai/devstral-2512:free",
     system_role="You are an expert analyst",
-    output_schema=MyModel,   # Optional structured output
-    image_gen=False,         # Enable image generation (conflicts with output_schema)
-    schema_retries=2,        # Self-correction attempts on schema-validation failure
+    output_schema=MyModel,    # Optional structured output
+    image_gen=False,          # Enable image generation (conflicts with output_schema)
+    schema_retries=2,         # Self-correction attempts on schema-validation failure
     summarize_threshold=0.85, # Auto-summarize history near the context limit (0 disables)
-    keep_recent=2,           # Recent messages kept verbatim when summarizing
-    web_search=False,        # Ground answers in web search (conflicts with image_gen)
-    max_search_iterations=3, # Cap on searches per grounded run
-    max_verify_iterations=2, # Cap on fact-check passes for a grounded answer (0 disables)
+    keep_recent=2,            # Recent messages kept verbatim when summarizing
+    web_search=False,         # Ground answers in web search (conflicts with image_gen)
+    max_search_iterations=3,  # Cap on searches per grounded run
+    max_verify_iterations=2,  # Cap on fact-check passes for a grounded answer (0 disables)
     temperature=0.7,
     top_p=0.9,
     top_k=40,
