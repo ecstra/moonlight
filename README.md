@@ -4,15 +4,24 @@
 
 > **Minimal async AI agent framework with zero bloat**
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![PyPI version](https://img.shields.io/pypi/v/moonlight-ai.svg)](https://pypi.org/project/moonlight-ai/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/moonlight-ai?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/moonlight-ai)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![PyPI version](https://img.shields.io/pypi/v/moonlight-ai.svg)](https://pypi.org/project/moonlight-ai/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/moonlight-ai?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/moonlight-ai)
 
-Moonlight is a lightweight SDK for building AI agents with full control. It provides async stateful agents, multimodal input/output (text, images, vision), image generation, structured responses via Pydantic/dataclass, and works with any OpenAI-compatible provider. No dependencies on OpenAI libraries, no hidden abstractions, no framework bloat.
+> [!IMPORTANT]
+> **Status: sunset as of `0.3.0`.** Moonlight isn't actively maintained anymore, and `0.3.0` is the last planned release for a while.
+>
+> When I started this, a tiny provider-agnostic agent layer was genuinely useful. It's less so now. The big providers (Anthropic, OpenAI, and the rest) ship their own agent SDKs that are more capable and far better supported than anything I'd keep up with on my own.
+>
+> So Moonlight is a personal research bed now: a small, readable codebase I use to prototype ideas about how agents get built. It's still MIT-licensed and still works, so fork it, learn from it, or build on it.
+
+Moonlight is a lightweight SDK for building AI agents with full control. You get async stateful agents, multimodal input/output (text, images, vision), image generation, structured responses via Pydantic or dataclasses, automatic model validation, and built-in retries. It works with any OpenAI-compatible provider and with Anthropic. No vendor SDKs, no hidden abstractions, no framework bloat.
 
 ## Installation
 
 ```bash
-uv pip install moonlight-ai
+pip install moonlight-ai
 ```
+
+> Works with `uv` too: `uv pip install moonlight-ai`.
 
 ## Quick Start
 
@@ -22,7 +31,7 @@ from moonlight import Provider, Agent, Content
 
 # Configure provider
 provider = Provider(
-    source="openrouter",  # or "openai", "deepseek", custom URL
+    source="openrouter",  # or "openai", "deepseek", "anthropic", a custom URL
     api="your-api-key"
 )
 
@@ -107,6 +116,7 @@ The SDK automatically:
 - Injects schema into system prompt
 - Validates and parses response into your model
 - Handles nested structures and optional fields
+- Self-corrects on validation failure: shows the model its error and retries (`schema_retries`, default 2) before falling back to the raw response
 
 ### Tool Calling (Explicit, Schema-Driven)
 
@@ -275,7 +285,7 @@ response = asyncio.run(agent.run(
     Content(
         text="What's in these images?",
         images=[
-            "https://example.com/image.jpg",  # URL
+            "https://example.com/image.jpg",   # URL
             "/path/to/local/image.png",        # Local file
             "data:image/jpeg;base64,..."       # Base64
         ]
@@ -372,25 +382,90 @@ agent.clear()
 agent.update_system_role("You are now a pirate")
 ```
 
-### Provider Support
+### Context Management (Auto-Summarization)
 
-Works with any OpenAI-compatible API:
+Long conversations are kept within the model's context window automatically. When usage crosses `summarize_threshold` of the context length (default `0.85`), the oldest turns are folded into a running summary that lives in the system role and then dropped, while the most recent `keep_recent` messages stay verbatim.
 
 ```python
-# Built-in providers
-Provider(source="openai", api="sk-...")
-Provider(source="deepseek", api="sk-...")
-Provider(source="openrouter", api="sk-...")
-Provider(source="together", api="...")
-Provider(source="groq", api="gsk-...")
-Provider(source="google", api="...")
+agent = Agent(
+    provider=provider,
+    model="anthropic/claude-opus-4.5",
+    summarize_threshold=0.85,  # compact at 85% of the context window (0 disables)
+    keep_recent=2,             # keep the last N messages verbatim
+)
 
-# Custom endpoints
-Provider(source="http://localhost:11434/v1", api="ollama")
+# Just keep talking. Compaction happens on its own when the window fills up.
+for message in conversation:
+    await agent.run(Content(message))
+```
+
+It is **reactive**: the check runs when you send a new message, using the previous turn's token count, and the summary itself is a plain side-call to the same model. It only engages when the provider reports a context length (surfaced as `ModelInfo.compactable`). For providers that don't report one (such as OpenAI or DeepSeek), it fails open and leaves history untouched.
+
+### Web Search & Grounding
+
+Agents can search the web and ground their answers in real sources. With `web_search=True`, `run()` first does a short research loop: the model decides whether it actually needs to search and, if so, proposes queries (it searches only when needed and reuses anything already gathered). Moonlight runs each query (DuckDuckGo via `ddgs`) and fetches the pages (Scrapy), up to `max_search_iterations` searches. The gathered results are folded into the prompt and answered through the normal flow, so structured output and everything else still apply.
+
+```python
+agent = Agent(
+    provider=provider,
+    model="anthropic/claude-opus-4.5",
+    web_search=True,
+    max_search_iterations=3,   # cap on searches per run
+    max_verify_iterations=2,   # cap on fact-check passes (0 disables)
+)
+
+resp = await agent.run(Content("What changed in the latest Python release?"))
+print(resp.content)   # answer grounded in the fetched pages
+```
+
+It composes with structured output: set `output_schema` and the grounded answer comes back as a validated instance.
+
+```python
+class Summary(BaseModel):
+    headline: str
+    points: list[str]
+
+agent = Agent(provider=provider, model="...", web_search=True, output_schema=Summary)
+result = await agent.run(Content("Summarize the latest Python release."))
+print(result.headline, result.points)
+```
+
+How it works:
+
+- **Searches only when needed**: a small JSON decision format lets the model decide whether to search, what to search, or to stop. It works the same on OpenAI-compatible providers and Anthropic.
+- **Grounded then answered**: the fetched page text is folded into the prompt and the answer runs through the normal flow, so `output_schema`, persistence, and token tracking all apply.
+- **No proof, no claim**: the answer is held to the sources. A fact-check pass (up to `max_verify_iterations`) re-reads the results and drops anything they don't support; if a claim is plausible but unproven it can run one more search to try to confirm it before dropping it. A loose match (a similar name, a shared username) is not treated as proof, and when nothing answers the request the agent says so rather than guessing.
+- **Context-light**: once the answer is produced, the bulky search results are dropped from history (only the question, a short marker, and the answer are kept), so grounding doesn't bloat later turns.
+- **Bounded**: at most `max_search_iterations` searches per run, plus at most `max_verify_iterations` fact-check passes.
+
+Notes:
+
+- This is text grounding. Pages are fetched as static HTML, so JavaScript-rendered content can come back thin, and DuckDuckGo can rate-limit. Per-page text is capped to keep token use bounded, so very long pages are clipped.
+- Because grounding is strict, fields that the fetched pages don't actually cover may come back empty rather than filled from the model's own memory. That is intended.
+- `web_search` cannot be combined with `image_gen`.
+
+### Provider Support
+
+Moonlight speaks two wire formats: the **OpenAI-compatible** API (`/chat/completions`) and **Anthropic's Messages API** (`/messages`). It picks the right one per provider, and Anthropic is auto-detected from the source, so there's nothing extra to set up.
+
+```python
+# Built-in shortcuts
+Provider(source="openai",     api="sk-...")
+Provider(source="deepseek",   api="sk-...")
+Provider(source="openrouter", api="sk-...")
+Provider(source="together",   api="...")
+Provider(source="groq",       api="gsk-...")
+Provider(source="anthropic",  api="sk-ant-...")   # auto-selects the Anthropic format
+
+# Any other OpenAI-compatible endpoint via full URL
+Provider(source="http://localhost:11434/v1", api="ollama")  # local Ollama / vLLM
+Provider(source="https://generativelanguage.googleapis.com/v1beta/openai/", api="...")  # Google AI
 Provider(source="https://api.custom.com/v1", api="key")
 ```
 
-Supported providers: OpenAI, DeepSeek, Together, Groq, Google AI, HuggingFace, OpenRouter, or any custom OpenAI-compatible endpoint.
+Built-in shortcuts: **OpenAI, DeepSeek, Together, Groq, OpenRouter, Anthropic.** Any other OpenAI-compatible endpoint (Google AI, Hugging Face, local servers, gateways) works via its full URL.
+
+> The structured-output and image-generation helpers currently assume OpenAI-compatible providers. Plain chat completions work on Anthropic today.
 
 ### Model Validation
 
@@ -421,6 +496,8 @@ Validation prevents runtime errors by checking:
 - **Modality support**: Verifies model supports requested input/output types (images, video, etc.)
 - **Image generation**: Confirms model can generate images when `image_gen=True`
 
+Capabilities are read from each provider's `/models` endpoint and normalized into one shape. Providers report very different metadata (or none at all), so when a capability can't be determined Moonlight **fails open** and won't block a request on something it couldn't verify. See [`structures.txt`](moonlight/src/provider/structures.txt) for the per-provider response shapes.
+
 Errors are raised immediately during agent initialization with clear messages:
 
 ```python
@@ -434,6 +511,10 @@ except AgentError as e:
     print(e)
     # Output: This model does not support image generation
 ```
+
+### Reliability
+
+Every provider call retries transient failures automatically. That covers network errors and the retryable status codes (`408, 429, 500, 502, 503, 504`), using exponential backoff with jitter and honoring a server's `Retry-After` header when present. Permanent errors (`400 / 401 / 403 / 404`) fail fast instead of burning attempts. Agents get this out of the box (two retries by default), and `GetCompletion` exposes `max_retries` and `retry_backoff` if you call it directly.
 
 ### Token Tracking
 
@@ -476,43 +557,25 @@ Handles:
 
 Error messages include context from provider metadata when available, making debugging easier.
 
-## Architecture
-
-```
-moonlight/
-└── src/
-    ├── agent/
-    │   ├── base.py             # Content dataclass
-    │   ├── history.py          # AgentHistory (conversation + image processing)
-    │   └── main.py             # Agent class
-    ├── provider/
-    │   ├── main.py             # Provider class
-    │   └── completion.py       # GetCompletion (async API calls)
-    └── helpers/
-        └── model_converter.py  # Schema/model conversion utilities
-```
-
 ## Design Philosophy
 
 Moonlight is intentionally minimal:
 
 - **No framework lock-in**: Standard Python async, bring your own orchestration
 - **No hidden magic**: Direct API calls, explicit control flow
-- **No bloat**: Zero dependencies on OpenAI SDK or heavy frameworks
+- **No bloat**: Zero dependencies on vendor SDKs or heavy frameworks
 - **Full control**: Access raw responses, customize at any level
-- **Provider agnostic**: Works with any OpenAI-compatible API
+- **Provider agnostic**: Any OpenAI-compatible API, plus Anthropic
 
 ## What Moonlight Doesn't Do
 
 To stay lightweight, Moonlight does not include:
 
-- Multi-agent orchestration (build your own with asyncio)
+- Multi-agent orchestration and runner engines (sequential, parallel, and data sharing are just `await` and `asyncio.gather` over `run()`, so a dedicated engine would only add a single-use wrapper)
+- Audio and video output (there is no provider-agnostic standard for these over chat completions, unlike text and image, so supporting them would mean per-provider special cases). Image output is supported where the provider returns it.
 - RAG systems or vector databases
-- Web scraping or search
 - Streaming responses
-- Built-in retry logic (in development)
 - Observability or logging (in development)
-- Audio/video output (in development)
 - MCP (Model Context Protocol) integration (in consideration)
 
 These are left to you or future extensions to keep the core minimal.
@@ -524,8 +587,14 @@ agent = Agent(
     provider=provider,
     model="mistralai/devstral-2512:free",
     system_role="You are an expert analyst",
-    output_schema=MyModel,   # Optional structured output
-    image_gen=False,         # Enable image generation (conflicts with output_schema)
+    output_schema=MyModel,    # Optional structured output
+    image_gen=False,          # Enable image generation (conflicts with output_schema)
+    schema_retries=2,         # Self-correction attempts on schema-validation failure
+    summarize_threshold=0.85, # Auto-summarize history near the context limit (0 disables)
+    keep_recent=2,            # Recent messages kept verbatim when summarizing
+    web_search=False,         # Ground answers in web search (conflicts with image_gen)
+    max_search_iterations=3,  # Cap on searches per grounded run
+    max_verify_iterations=2,  # Cap on fact-check passes for a grounded answer (0 disables)
     temperature=0.7,
     top_p=0.9,
     top_k=40,
@@ -551,6 +620,8 @@ tokens = agent.get_total_tokens()
 - `plugins`: Provider-specific plugins
 - `reasoning`, `verbosity`: Control reasoning traces
 
+Agent-level params (not forwarded to the provider): `schema_retries`, `summarize_threshold`, `keep_recent`, `web_search`, `max_search_iterations`, `max_verify_iterations`. See the sections above.
+
 ## Building From Source
 
 ```bash
@@ -567,6 +638,35 @@ pip install dist/moonlight_ai-*.whl
 
 # Test
 python -c "from moonlight import Agent; print('OK')"
+```
+
+## Local Setup (No Build)
+
+Moonlight is pure Python, so you can vendor it into a project instead of installing from PyPI. Copy the `moonlight/` folder next to your script, install the runtime deps, and import it. It's the same vendored layout `test.py` in this repo uses.
+
+```bash
+# from your project root, with the moonlight/ folder copied in
+pip install -r requirements.txt   # httpx, pydantic, requests, ddgs, scrapy
+```
+
+```python
+# your_script.py  (sits next to the moonlight/ folder)
+import asyncio
+from moonlight import Provider, Agent, Content
+
+provider = Provider(source="deepseek", api="your-deepseek-key")
+agent = Agent(provider=provider, model="deepseek-chat")
+
+response = asyncio.run(agent.run(Content("Hello!")))
+print(response.content)
+```
+
+Layout:
+
+```
+your-project/
+├── moonlight/        # the copied folder
+└── your_script.py
 ```
 
 ## License
